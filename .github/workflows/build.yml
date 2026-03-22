@@ -1,0 +1,50 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+        dotnet: ['8.0']
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ matrix.dotnet }}
+
+    - name: Restore dependencies
+      run: dotnet restore VoxMind.sln
+
+    - name: Build
+      run: dotnet build VoxMind.sln -c Release --no-restore
+
+    - name: Test
+      run: dotnet test VoxMind.sln -c Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        files: "**/coverage.cobertura.xml"
+
+  style-check:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0'
+    - name: Check format
+      run: |
+        dotnet tool install --global dotnet-format
+        dotnet format --verify-no-changes VoxMind.sln

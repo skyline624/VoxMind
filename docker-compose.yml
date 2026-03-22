@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  voxmind:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: voxmind:latest
+    container_name: voxmind
+    environment:
+      - PYANNOTE_ENDPOINT=pyannote:50051
+      - DATABASE_PATH=/data/profiles/database.sqlite
+      - SHARED_FOLDER=/data/shared
+      - LOG_LEVEL=Information
+    volumes:
+      - ./voice_data:/data
+      - /dev/snd:/dev/snd          # Périphériques audio Linux
+    devices:
+      - /dev/snd:/dev/snd
+    restart: unless-stopped
+    depends_on:
+      pyannote:
+        condition: service_healthy
+    networks:
+      - voxmind-network
+
+  pyannote:
+    build:
+      context: ./python_services
+      dockerfile: Dockerfile.pyannote
+      args:
+        HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN}
+    image: voxmind-pyannote:latest
+    container_name: voxmind-pyannote
+    environment:
+      - GRPC_PORT=50051
+      - CUDA_VISIBLE_DEVICES=0    # GPU NVIDIA
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - voxmind-network
+
+networks:
+  voxmind-network:
+    driver: bridge

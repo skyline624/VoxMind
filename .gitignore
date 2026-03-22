@@ -1,0 +1,71 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.swp
+publish/
+coverage/
+coverage_report/
+TestResults/
+*.nupkg
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+*.pyc
+
+# gRPC generated Python files (générés automatiquement)
+python_services/*_pb2.py
+python_services/*_pb2_grpc.py
+
+# Modèles ML (trop lourds pour git)
+voice_data/cache/
+*.pt
+*.bin
+*.gguf
+*.ggml
+
+# Base de données runtime
+voice_data/profiles/database.sqlite
+voice_data/profiles/database.sqlite-wal
+voice_data/profiles/database.sqlite-shm
+voice_data/profiles/backups/
+
+# Sessions et logs runtime
+voice_data/sessions/
+voice_data/logs/
+voice_data/embeddings/
+
+# Shared (bridge - fichiers runtime)
+voice_data/shared/
+
+# Secrets
+.env
+.env.local
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+.vscode/settings.json
+*.code-workspace
+
+# Config avec token HF (ne jamais commiter)
+voice_data/config/config.local.json

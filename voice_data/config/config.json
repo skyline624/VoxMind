@@ -1,0 +1,78 @@
+{
+  "$schema": "./config.schema.json",
+  "application": {
+    "name": "VoxMind",
+    "version": "1.0.0",
+    "environment": "development"
+  },
+  "audio": {
+    "default_sample_rate": 16000,
+    "default_chunk_duration_ms": 100,
+    "sources": {
+      "micro": {
+        "enabled": true,
+        "device_index": -1,
+        "name": "default"
+      },
+      "system": {
+        "enabled": false,
+        "device_index": -1,
+        "name": "default"
+      }
+    },
+    "max_silent_duration_ms": 30000
+  },
+  "ml": {
+    "transcription": {
+      "model": "base",
+      "model_path": "/home/pc/voice_data/cache/whisper",
+      "language": "auto",
+      "compute_backend": "auto",
+      "temperature": 0.0
+    },
+    "speaker_recognition": {
+      "enabled": true,
+      "pyannote_endpoint": "localhost:50051",
+      "confidence_threshold": 0.7,
+      "embedding_size": 512,
+      "max_enrollment_duration_seconds": 60
+    }
+  },
+  "database": {
+    "path": "/home/pc/voice_data/profiles/database.sqlite",
+    "backup_enabled": true,
+    "backup_interval_hours": 24,
+    "backup_path": "/home/pc/voice_data/profiles/backups"
+  },
+  "session": {
+    "output_folder": "/home/pc/voice_data/sessions",
+    "summary_interval_minutes": 5,
+    "max_segment_duration_seconds": 30,
+    "save_audio_cache": false,
+    "audio_cache_format": "wav"
+  },
+  "bridge": {
+    "shared_folder": "/home/pc/voice_data/shared",
+    "poll_interval_ms": 500,
+    "command_timeout_seconds": 30,
+    "status_update_interval_seconds": 5
+  },
+  "logging": {
+    "level": "Information",
+    "console": {
+      "enabled": true,
+      "format": "colored"
+    },
+    "file": {
+      "enabled": true,
+      "path": "/home/pc/voice_data/logs/voxmind_{date}.log",
+      "rolling_interval": "Day",
+      "retained_file_count": 30
+    }
+  },
+  "metrics": {
+    "enabled": false,
+    "port": 9090,
+    "endpoint": "/metrics"
+  }
+}

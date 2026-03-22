@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package voxmind;
+
+option csharp_namespace = "VoxMind.Grpc";
+
+service SpeakerRecognition {
+  // Extrait un embedding vocal à partir d'audio
+  rpc ExtractEmbedding(AudioData) returns (EmbeddingResponse);
+
+  // Compare deux embeddings (cosine similarity + euclidean distance)
+  rpc CompareEmbeddings(CompareRequest) returns (CompareResponse);
+
+  // Health check
+  rpc Ping(Empty) returns (Pong);
+}
+
+message AudioData {
+  bytes audio_data = 1;    // WAV PCM 16kHz mono
+  float sample_rate = 2;   // Devrait être 16000
+  int32 duration_ms = 3;   // Durée en ms
+}
+
+message EmbeddingResponse {
+  bool success = 1;
+  bytes embedding = 2;       // Vecteur float32, dimension 512
+  float duration_used = 3;   // Durée audio utilisée
+  string error = 4;
+}
+
+message CompareRequest {
+  bytes embedding1 = 1;
+  bytes embedding2 = 2;
+}
+
+message CompareResponse {
+  float cosine_similarity = 1;
+  float euclidean_distance = 2;
+  bool is_same_speaker = 3;   // Basé sur le seuil configuré
+}
+
+message Empty {}
+
+message Pong {
+  bool alive = 1;
+  string version = 2;
+}

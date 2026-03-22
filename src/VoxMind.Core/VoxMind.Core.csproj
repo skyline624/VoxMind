@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>VoxMind.Core</AssemblyName>
+    <RootNamespace>VoxMind.Core</RootNamespace>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Base de données -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+
+    <!-- ML / Transcription : Whisper.net (wrapper whisper.cpp, plus stable que TorchSharp pour Whisper) -->
+    <PackageReference Include="Whisper.net" Version="1.7.0" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.7.0" />
+
+    <!-- TorchSharp (gardé pour futurs modèles ML, pas utilisé pour Whisper) -->
+    <PackageReference Include="TorchSharp" Version="0.106.0" />
+
+    <!-- gRPC -->
+    <PackageReference Include="Grpc.Net.Client" Version="2.76.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.76.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Google.Protobuf" Version="3.28.0" />
+
+    <!-- DI & Hosting -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+
+    <!-- Logging -->
+    <PackageReference Include="Serilog" Version="3.1.1" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
+
+    <!-- Sérialisation (8.0.5+ corrige les vulnérabilités connues) -->
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+
+    <!-- Audio (conditionnel par plateforme) -->
+    <PackageReference Include="NAudio" Version="2.2.1" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
+    <PackageReference Include="PortAudioSharp2" Version="1.0.2" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Génération automatique du code gRPC C# depuis le proto -->
+    <Protobuf Include="../../python_services/protos/speaker.proto" GrpcServices="Client" />
+  </ItemGroup>
+
+</Project>

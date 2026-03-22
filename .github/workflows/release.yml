@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0'
+
+    - name: Build and Publish
+      run: |
+        dotnet build VoxMind.sln -c Release
+        dotnet publish src/VoxMind.CLI -c Release -o ./publish/linux-x64 -r linux-x64 --self-contained false
+        dotnet publish src/VoxMind.CLI -c Release -o ./publish/win-x64 -r win-x64 --self-contained false
+
+    - name: Package
+      run: |
+        cd publish
+        zip -r ../VoxMind-${{ github.ref_name }}-linux-x64.zip linux-x64/
+        zip -r ../VoxMind-${{ github.ref_name }}-win-x64.zip win-x64/
+        cd ../python_services
+        zip -r ../VoxMind-PythonServices-${{ github.ref_name }}.zip .
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: VoxMind-*.zip
+        draft: true
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
