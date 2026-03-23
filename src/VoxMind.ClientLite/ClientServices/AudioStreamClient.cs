@@ -2,7 +2,7 @@ using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using VoxMind.ClientGrpc;
+using VoxMind.Grpc;
 using VoxMind.ClientLite.ClientServices.AudioCapture;
 using VoxMind.ClientLite.Configuration;
 
@@ -13,44 +13,50 @@ public class AudioStreamClient : BackgroundService
 {
     private readonly VoxMindClientService.VoxMindClientServiceClient _grpc;
     private readonly NativeAudioCapture _audioCapture;
+    private readonly ServerCommandHandler _commandHandler;
     private readonly ClientConfiguration _config;
     private readonly ILogger<AudioStreamClient> _logger;
 
     private AsyncClientStreamingCall<AudioChunkMessage, StreamAudioResponse>? _streamCall;
-    private readonly object _streamLock = new();
 
     public AudioStreamClient(
         VoxMindClientService.VoxMindClientServiceClient grpc,
         NativeAudioCapture audioCapture,
+        ServerCommandHandler commandHandler,
         ClientConfiguration config,
         ILogger<AudioStreamClient> logger)
     {
         _grpc = grpc;
         _audioCapture = audioCapture;
+        _commandHandler = commandHandler;
         _config = config;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Démarrer le stream audio vers le serveur
+        // Ouvrir le stream audio (la capture démarre sur commande START du serveur)
         _streamCall = _grpc.StreamAudio(cancellationToken: stoppingToken);
 
-        // Abonner la capture audio au stream
-        _audioCapture.AudioDataAvailable += OnAudioData;
+        // Abonner la capture au stream — utilise fire-and-forget avec Task pour éviter async void
+        _audioCapture.AudioDataAvailable += OnAudioDataSafe;
 
-        // Démarrer la capture
-        await _audioCapture.StartAsync(stoppingToken);
+        // Démarrer automatiquement la capture si configuré
+        if (_config.AudioSource != "manual")
+            await _audioCapture.StartAsync(stoppingToken);
 
-        // Démarrer la réception des commandes serveur en parallèle
-        var commandTask = ReceiveCommandsAsync(stoppingToken);
-
-        _logger.LogInformation("Streaming audio démarré vers le serveur.");
-
-        await commandTask;
+        // Recevoir les commandes serveur en parallèle
+        _logger.LogInformation("Stream audio ouvert. En attente de commandes serveur.");
+        await ReceiveCommandsAsync(stoppingToken);
     }
 
-    private async void OnAudioData(object? sender, byte[] wavData)
+    // Pattern safe : le handler void délègue à une méthode Task, les exceptions sont capturées
+    private void OnAudioDataSafe(object? sender, byte[] wavData)
+    {
+        _ = SendAudioChunkAsync(wavData);
+    }
+
+    private async Task SendAudioChunkAsync(byte[] wavData)
     {
         if (_streamCall is null) return;
         try
@@ -63,6 +69,7 @@ public class AudioStreamClient : BackgroundService
                 TimestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             });
         }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled) { }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Erreur lors de l'envoi d'un chunk audio.");
@@ -81,8 +88,7 @@ public class AudioStreamClient : BackgroundService
 
             await foreach (var cmd in call.ResponseStream.ReadAllAsync(ct))
             {
-                _logger.LogInformation("Commande reçue du serveur : {Command} | {Payload}", cmd.Command, cmd.PayloadJson);
-                // La gestion des commandes (START, STOP, etc.) serait ici
+                await _commandHandler.HandleAsync(cmd, ct);
             }
         }
         catch (OperationCanceledException) { }
@@ -95,12 +101,13 @@ public class AudioStreamClient : BackgroundService
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        _audioCapture.AudioDataAvailable -= OnAudioData;
+        _audioCapture.AudioDataAvailable -= OnAudioDataSafe;
         await _audioCapture.StopAsync();
 
         if (_streamCall is not null)
         {
-            await _streamCall.RequestStream.CompleteAsync();
+            try { await _streamCall.RequestStream.CompleteAsync(); }
+            catch { /* ignoré à l'arrêt */ }
             _streamCall.Dispose();
         }
 

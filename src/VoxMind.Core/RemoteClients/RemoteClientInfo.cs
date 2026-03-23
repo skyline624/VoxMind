@@ -1,5 +1,5 @@
 using System.Threading.Channels;
-using VoxMind.ClientGrpc;
+using VoxMind.Grpc;
 
 namespace VoxMind.Core.RemoteClients;
 

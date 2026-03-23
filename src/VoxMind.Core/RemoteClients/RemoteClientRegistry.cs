@@ -46,6 +46,9 @@ public class RemoteClientRegistry : IRemoteClientRegistry, IDisposable
     public RemoteClientInfo? Get(string clientId) =>
         _clients.TryGetValue(clientId, out var client) ? client : null;
 
+    public RemoteClientInfo? GetByName(string name) =>
+        _clients.Values.FirstOrDefault(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
     public IReadOnlyList<RemoteClientInfo> GetAll() => _clients.Values.ToList();
 
     private void RemoveExpiredClients(object? state)

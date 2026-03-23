@@ -1,6 +1,7 @@
 using Grpc.Core;
+using WellKnownEmpty = Google.Protobuf.WellKnownTypes.Empty;
 using Microsoft.Extensions.Logging;
-using VoxMind.ClientGrpc;
+using VoxMind.Grpc;
 using VoxMind.Core.Configuration;
 using VoxMind.Core.Session;
 
@@ -44,10 +45,10 @@ public class AudioStreamReceiverService : VoxMindClientService.VoxMindClientServ
         return Task.FromResult(new RegisterResponse { Success = true });
     }
 
-    public override Task<Empty> UnregisterClient(UnregisterRequest request, ServerCallContext context)
+    public override Task<WellKnownEmpty> UnregisterClient(UnregisterRequest request, ServerCallContext context)
     {
         _registry.Unregister(request.ClientId);
-        return Task.FromResult(new Empty());
+        return Task.FromResult(new WellKnownEmpty());
     }
 
     public override Task<HeartbeatResponse> SendHeartbeat(HeartbeatRequest request, ServerCallContext context)

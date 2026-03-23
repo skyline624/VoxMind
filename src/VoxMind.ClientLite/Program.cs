@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
-using VoxMind.ClientGrpc;
+using VoxMind.Grpc;
 using VoxMind.ClientLite.ClientServices;
 using VoxMind.ClientLite.ClientServices.AudioCapture;
 using VoxMind.ClientLite.Configuration;
@@ -41,6 +41,7 @@ internal class Program
                         sp.GetRequiredService<GrpcChannel>()));
                 services.AddSingleton<ClientRegistration>();
                 services.AddSingleton<NativeAudioCapture>();
+                services.AddSingleton<ServerCommandHandler>();
                 services.AddHostedService<HeartbeatService>();
                 services.AddHostedService<AudioStreamClient>();
             })

@@ -7,5 +7,6 @@ public interface IRemoteClientRegistry
     void UpdateHeartbeat(string clientId);
     bool Exists(string clientId);
     RemoteClientInfo? Get(string clientId);
+    RemoteClientInfo? GetByName(string name);
     IReadOnlyList<RemoteClientInfo> GetAll();
 }

@@ -2,14 +2,16 @@ syntax = "proto3";
 
 package voxmind.client;
 
-option csharp_namespace = "VoxMind.ClientGrpc";
+import "google/protobuf/empty.proto";
+
+option csharp_namespace = "VoxMind.Grpc";
 
 service VoxMindClientService {
   // Inscription du client auprès du serveur
   rpc RegisterClient(RegisterRequest) returns (RegisterResponse);
 
   // Désinscription du client
-  rpc UnregisterClient(UnregisterRequest) returns (Empty);
+  rpc UnregisterClient(UnregisterRequest) returns (google.protobuf.Empty);
 
   // Keep-alive du client
   rpc SendHeartbeat(HeartbeatRequest) returns (HeartbeatResponse);
@@ -67,5 +69,3 @@ message ServerCommand {
   string command = 1;
   string payload_json = 2;
 }
-
-message Empty {}

@@ -162,9 +162,57 @@ public class FileBridge : IExternalBridge
                     break;
 
                 case CommandType.StartRemoteListening:
-                    var rName = command.Parameters?.TryGetValue("session_name", out var rn) == true ? rn?.ToString() : null;
-                    var rsession = await _sessionManager.StartRemoteListeningAsync(rName);
-                    response.Data = new { session_id = rsession.Id, started_at = rsession.StartedAt };
+                    // Identifier le client (par ID ou par nom)
+                    string? rclientId = command.Parameters?.TryGetValue("client_id", out var rcid) == true ? rcid?.ToString() : null;
+                    string? rclientName = command.Parameters?.TryGetValue("client_name", out var rcname) == true ? rcname?.ToString() : null;
+
+                    if (string.IsNullOrEmpty(rclientId) && string.IsNullOrEmpty(rclientName))
+                    {
+                        response.Status = "error";
+                        response.Error = "client_id ou client_name requis pour START_REMOTE_LISTENING.";
+                        response.ErrorCode = ErrorCodes.ErrorGeneral;
+                        break;
+                    }
+
+                    var rclient = !string.IsNullOrEmpty(rclientId)
+                        ? _registry.Get(rclientId)
+                        : _registry.GetByName(rclientName!);
+
+                    if (rclient is null)
+                    {
+                        response.Status = "error";
+                        response.Error = $"Client '{rclientId ?? rclientName}' non connecté.";
+                        response.ErrorCode = ErrorCodes.ErrorGeneral;
+                        break;
+                    }
+
+                    var rSource = command.Parameters?.TryGetValue("source", out var rsrc) == true
+                        ? rsrc?.ToString() ?? "microphone"
+                        : "microphone";
+
+                    // Démarrer la session distante côté serveur
+                    var rsession = await _sessionManager.StartRemoteListeningAsync(rclient.Name);
+
+                    // Notifier le client via son canal de commandes
+                    var startCmd = new VoxMind.Grpc.ServerCommand
+                    {
+                        Command = "START",
+                        PayloadJson = JsonSerializer.Serialize(new
+                        {
+                            session_id = rsession.Id.ToString(),
+                            source = rSource
+                        })
+                    };
+                    rclient.CommandChannel.Writer.TryWrite(startCmd);
+
+                    response.Data = new
+                    {
+                        session_id = rsession.Id,
+                        started_at = rsession.StartedAt,
+                        client_id = rclient.ClientId,
+                        client_name = rclient.Name,
+                        message = $"Écoute distante démarrée sur '{rclient.Name}'"
+                    };
                     break;
 
                 case CommandType.StopRemoteListening:

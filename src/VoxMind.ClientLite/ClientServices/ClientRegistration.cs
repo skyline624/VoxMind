@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-using VoxMind.ClientGrpc;
+using VoxMind.Grpc;
 using VoxMind.ClientLite.Configuration;
 
 namespace VoxMind.ClientLite.ClientServices;

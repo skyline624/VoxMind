@@ -1,7 +1,7 @@
 using Grpc.Core;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using VoxMind.ClientGrpc;
+using VoxMind.Grpc;
 using VoxMind.Core.Configuration;
 using VoxMind.Core.RemoteClients;
 using VoxMind.Core.Session;
