@@ -59,7 +59,7 @@ public class InteractiveMode
 
                 case "start":
                     var name = parts.Length > 1 ? string.Join(" ", parts[1..]) : null;
-                    var session = await sessionManager.StartSessionAsync(name, ct);
+                    var session = await sessionManager.StartSessionAsync(name, "live", null, ct);
                     ColorConsole.WriteSuccess($"Session '{session.Name}' démarrée (ID: {session.Id})");
                     break;
 

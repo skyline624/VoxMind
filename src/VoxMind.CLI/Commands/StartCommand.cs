@@ -20,7 +20,7 @@ public static class StartCommand
             var manager = services.GetRequiredService<ISessionManager>();
             try
             {
-                var session = await manager.StartSessionAsync(name, ct);
+                var session = await manager.StartSessionAsync(name, "live", null, ct);
                 ColorConsole.WriteSuccess($"Session '{session.Name}' démarrée (ID: {session.Id})");
             }
             catch (InvalidOperationException ex)
