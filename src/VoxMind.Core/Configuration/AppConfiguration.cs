@@ -10,6 +10,7 @@ public class AppConfiguration
     public BridgeConfig Bridge { get; set; } = new();
     public LoggingConfig Logging { get; set; } = new();
     public MetricsConfig Metrics { get; set; } = new();
+    public RemoteClientsConfig RemoteClients { get; set; } = new();
 }
 
 public class ApplicationConfig
@@ -109,4 +110,12 @@ public class MetricsConfig
     public bool Enabled { get; set; } = false;
     public int Port { get; set; } = 9090;
     public string Endpoint { get; set; } = "/metrics";
+}
+
+public class RemoteClientsConfig
+{
+    public bool Enabled { get; set; } = false;
+    public int Port { get; set; } = 50052;
+    public string SharedToken { get; set; } = "changeme";
+    public int HeartbeatTimeoutSeconds { get; set; } = 30;
 }

@@ -5,5 +5,6 @@ public enum AudioSourceType
     Microphone,
     SystemAudio,
     HDMI,
-    USB
+    USB,
+    Remote
 }

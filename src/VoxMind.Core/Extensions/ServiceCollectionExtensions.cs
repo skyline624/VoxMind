@@ -5,6 +5,7 @@ using VoxMind.Core.Audio;
 using VoxMind.Core.Bridge;
 using VoxMind.Core.Configuration;
 using VoxMind.Core.Database;
+using VoxMind.Core.RemoteClients;
 using VoxMind.Core.Session;
 using VoxMind.Core.SpeakerRecognition;
 using VoxMind.Core.Transcription;
@@ -63,6 +64,14 @@ public static class ServiceCollectionExtensions
             )
         );
 
+        // Clients distants
+        services.AddSingleton<IRemoteClientRegistry>(sp =>
+            new RemoteClientRegistry(
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<RemoteClientRegistry>>(),
+                config.RemoteClients.HeartbeatTimeoutSeconds
+            )
+        );
+
         // Bridge
         services.AddSingleton<IExternalBridge>(sp =>
             new FileBridge(
@@ -71,7 +80,8 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<FileBridge>>(),
                 sp.GetService<IHostApplicationLifetime>(),
                 config.Bridge.PollIntervalMs,
-                config.Bridge.StatusUpdateIntervalSeconds
+                config.Bridge.StatusUpdateIntervalSeconds,
+                sp.GetRequiredService<IRemoteClientRegistry>()
             )
         );
 

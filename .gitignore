@@ -71,3 +71,5 @@ desktop.ini
 voice_data/config/config.local.json
 .vexp
 VoxMind-*
+.claude
+.vscode

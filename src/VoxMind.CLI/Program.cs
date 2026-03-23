@@ -1,11 +1,12 @@
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Serilog;
 using System.CommandLine;
 using VoxMind.CLI.Commands;
 using VoxMind.CLI.Interactive;
 using VoxMind.Core.Configuration;
 using VoxMind.Core.Extensions;
+using VoxMind.Core.RemoteClients;
 using VoxMind.Core.Transcription;
 
 namespace VoxMind.CLI;
@@ -41,21 +42,37 @@ internal class Program
             Console.WriteLine("\nArrêt en cours...");
         };
 
-        // Conteneur DI
-        var host = Host.CreateDefaultBuilder()
-            .UseSerilog()
-            .ConfigureServices(services => services.AddVoxMind(config))
-            .Build();
+        // Builder WebApplication (remplace Host.CreateDefaultBuilder — nécessaire pour gRPC)
+        var builder = Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder(args);
+        builder.Host.UseSerilog();
+        builder.Services.AddVoxMind(config);
+
+        // gRPC côté serveur (port 50052) si activé
+        if (config.RemoteClients.Enabled)
+        {
+            builder.Services.AddGrpc();
+            builder.WebHost.ConfigureKestrel(opts =>
+            {
+                // HTTP/2 uniquement sur le port gRPC
+                opts.ListenAnyIP(config.RemoteClients.Port, lo =>
+                    lo.Protocols = HttpProtocols.Http2);
+            });
+        }
+
+        var app = builder.Build();
+
+        if (config.RemoteClients.Enabled)
+            app.MapGrpcService<AudioStreamReceiverService>();
 
         // Initialiser la DB
-        using (var scope = host.Services.CreateScope())
+        using (var scope = app.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<VoxMind.Core.Database.VoxMindDbContext>();
             await db.Database.EnsureCreatedAsync(cts.Token);
         }
 
         // Charger le modèle Whisper au démarrage
-        var transcription = host.Services.GetRequiredService<VoxMind.Core.Transcription.ITranscriptionService>();
+        var transcription = app.Services.GetRequiredService<ITranscriptionService>();
         var modelSize = config.Ml.Transcription.Model.ToLowerInvariant() switch
         {
             "tiny" => ModelSize.Tiny,
@@ -69,13 +86,19 @@ internal class Program
         // Si aucun argument : mode interactif
         if (args.Length == 0)
         {
-            var interactive = new InteractiveMode(host.Services);
-            return await interactive.RunAsync(cts.Token);
+            var interactive = new InteractiveMode(app.Services);
+            var interactiveTask = interactive.RunAsync(cts.Token);
+            if (config.RemoteClients.Enabled)
+                await app.StartAsync(cts.Token);
+            return await interactiveTask;
         }
 
         // Sinon : parser les arguments CLI
-        var rootCommand = BuildRootCommand(host.Services);
-        return await rootCommand.InvokeAsync(args);
+        var rootCommand = BuildRootCommand(app.Services);
+        var exitCode = await rootCommand.InvokeAsync(args);
+        if (config.RemoteClients.Enabled)
+            await app.StopAsync();
+        return exitCode;
     }
 
     private static RootCommand BuildRootCommand(IServiceProvider services)

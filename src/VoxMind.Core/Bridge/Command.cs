@@ -23,7 +23,10 @@ public enum CommandType
     GetSpeaker,
     ImportSpeaker,
     ExportSpeaker,
-    Shutdown
+    Shutdown,
+    StartRemoteListening,
+    StopRemoteListening,
+    ListRemoteClients
 }
 
 public class BridgeCommand
@@ -62,6 +65,9 @@ public class BridgeCommand
         "IMPORT_SPEAKER" => CommandType.ImportSpeaker,
         "EXPORT_SPEAKER" => CommandType.ExportSpeaker,
         "SHUTDOWN" => CommandType.Shutdown,
+        "START_REMOTE_LISTENING" => CommandType.StartRemoteListening,
+        "STOP_REMOTE_LISTENING" => CommandType.StopRemoteListening,
+        "LIST_REMOTE_CLIENTS" => CommandType.ListRemoteClients,
         _ => throw new ArgumentException($"Commande inconnue : {Command}")
     };
 }

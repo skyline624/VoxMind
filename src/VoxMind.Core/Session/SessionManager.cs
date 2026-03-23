@@ -28,6 +28,7 @@ public class SessionManager : ISessionManager
     private Task? _processingTask;
     private Timer? _summaryTimer;
     private bool _disposed;
+    private bool _isRemoteSession;
     private readonly object _lock = new();
 
     public SessionStatus Status => _status;
@@ -84,6 +85,7 @@ public class SessionManager : ISessionManager
         _currentSession = session;
         _currentSegments.Clear();
         _status = SessionStatus.Listening;
+        _isRemoteSession = false;
 
         // Canal de chunks audio (capacité bornée : 100 chunks = ~10s à 100ms/chunk)
         _audioChannel = Channel.CreateBounded<AudioChunk>(new BoundedChannelOptions(100)
@@ -108,6 +110,55 @@ public class SessionManager : ISessionManager
         return session;
     }
 
+    public async Task<ListeningSession> StartRemoteListeningAsync(string? name = null, CancellationToken ct = default)
+    {
+        if (_status != SessionStatus.Idle)
+            throw new InvalidOperationException($"Impossible de démarrer : session déjà en cours ({_status}).");
+
+        var session = new ListeningSession
+        {
+            Id = Guid.NewGuid(),
+            Name = name ?? $"remote_{DateTime.Now:yyyyMMdd_HHmmss}",
+            StartedAt = DateTime.UtcNow,
+            Status = SessionStatus.Listening
+        };
+
+        _db.ListeningSessions.Add(new ListeningSessionEntity
+        {
+            Id = session.Id,
+            Name = session.Name,
+            StartedAt = session.StartedAt,
+            Status = "active"
+        });
+        await _db.SaveChangesAsync(ct);
+
+        _currentSession = session;
+        _currentSegments.Clear();
+        _status = SessionStatus.Listening;
+        _isRemoteSession = true;
+
+        _audioChannel = Channel.CreateBounded<AudioChunk>(new BoundedChannelOptions(100)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
+
+        _processingCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _processingTask = ProcessAudioChannelAsync(_processingCts.Token);
+
+        _summaryTimer = new Timer(_ => GenerateIntermediateSummary(), null,
+            TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+
+        _logger.LogInformation("Session distante '{Name}' (ID={Id}) démarrée.", session.Name, session.Id);
+        return session;
+    }
+
+    public async Task InjectAudioChunkAsync(byte[] wavData, CancellationToken ct = default)
+    {
+        if (_status != SessionStatus.Listening || _audioChannel is null) return;
+        var chunk = new AudioChunk(wavData, AudioSourceType.Remote, TimeSpan.Zero, 16000);
+        await _audioChannel.Writer.WriteAsync(chunk, ct);
+    }
+
     public async Task<ListeningSession> StopSessionAsync()
     {
         if (_status == SessionStatus.Idle || _currentSession is null)
@@ -115,9 +166,12 @@ public class SessionManager : ISessionManager
 
         _logger.LogInformation("Arrêt de la session '{Name}'...", _currentSession.Name);
 
-        // Arrêter la capture audio
-        _audioCapture.AudioChunkReceived -= OnAudioChunkReceived;
-        await _audioCapture.StopCaptureAsync();
+        // Arrêter la capture audio (seulement pour les sessions locales)
+        if (!_isRemoteSession)
+        {
+            _audioCapture.AudioChunkReceived -= OnAudioChunkReceived;
+            await _audioCapture.StopCaptureAsync();
+        }
 
         // Arrêter le timer de résumés intermédiaires
         _summaryTimer?.Dispose();

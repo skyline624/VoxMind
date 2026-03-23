@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using VoxMind.Core.RemoteClients;
 using VoxMind.Core.Session;
 using VoxMind.Core.Transcription;
 
@@ -12,6 +13,7 @@ public class FileBridge : IExternalBridge
     private readonly int _pollIntervalMs;
     private readonly int _statusUpdateIntervalSeconds;
     private readonly ISessionManager _sessionManager;
+    private readonly IRemoteClientRegistry _registry;
     private readonly ILogger<FileBridge> _logger;
     private readonly IHostApplicationLifetime? _lifetime;
 
@@ -37,7 +39,8 @@ public class FileBridge : IExternalBridge
         ILogger<FileBridge> logger,
         IHostApplicationLifetime? lifetime = null,
         int pollIntervalMs = 500,
-        int statusUpdateIntervalSeconds = 5)
+        int statusUpdateIntervalSeconds = 5,
+        IRemoteClientRegistry? registry = null)
     {
         _sharedFolder = sharedFolder;
         _sessionManager = sessionManager;
@@ -45,6 +48,7 @@ public class FileBridge : IExternalBridge
         _lifetime = lifetime;
         _pollIntervalMs = pollIntervalMs;
         _statusUpdateIntervalSeconds = statusUpdateIntervalSeconds;
+        _registry = registry ?? new RemoteClientRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<RemoteClientRegistry>.Instance);
 
         _commandsFile = Path.Combine(sharedFolder, "commands_to_voxmind.json");
         _statusFile = Path.Combine(sharedFolder, "status_from_voxmind.json");
@@ -155,6 +159,21 @@ public class FileBridge : IExternalBridge
                     response.Data = new { message = "VoxMind s'arrête..." };
                     await WriteJsonSafeAsync(_statusFile, response);
                     _lifetime?.StopApplication();
+                    break;
+
+                case CommandType.StartRemoteListening:
+                    var rName = command.Parameters?.TryGetValue("session_name", out var rn) == true ? rn?.ToString() : null;
+                    var rsession = await _sessionManager.StartRemoteListeningAsync(rName);
+                    response.Data = new { session_id = rsession.Id, started_at = rsession.StartedAt };
+                    break;
+
+                case CommandType.StopRemoteListening:
+                    var rs = await _sessionManager.StopSessionAsync();
+                    response.Data = new { session_id = rs.Id, ended_at = rs.EndedAt, duration_seconds = rs.Duration.TotalSeconds };
+                    break;
+
+                case CommandType.ListRemoteClients:
+                    response.Data = _registry.GetAll().Select(c => new { c.ClientId, c.Name, c.Platform, c.RegisteredAt, c.LastHeartbeatAt });
                     break;
 
                 default:
