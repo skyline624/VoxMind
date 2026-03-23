@@ -22,40 +22,33 @@
     },
     "max_silent_duration_ms": 30000
   },
+  "api": {
+    "port": 8000,
+    "enable_swagger": true
+  },
   "ml": {
+    "vad": {
+      "enabled": true,
+      "model_path": "/home/pc/devellopement/VoxMind/models/silero_vad.onnx",
+      "threshold": 0.3,
+      "min_silence_duration_seconds": 0.5,
+      "min_speech_duration_seconds": 0.25,
+      "max_segment_duration_seconds": 10.0
+    },
     "transcription": {
       "engine": "parakeet",
-      "parakeet_model_path": "./models/parakeet-tdt-0.6b-v3-int8"
+      "parakeet_model_path": "/home/pc/devellopement/VoxMind/models/parakeet-tdt-0.6b-v3-int8",
+      "whisper_model_path": "/home/pc/devellopement/VoxMind/models/whisper-medium.bin",
+      "default_model": "parakeet"
     },
     "speaker_recognition": {
       "enabled": true,
       "confidence_threshold": 0.7,
       "sherpa_onnx": {
-        "segmentation_model_path": "./models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx",
-        "embedding_model_path": "./models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
         "num_threads": 4,
         "clustering_threshold": 0.5
       }
     }
-  },
-  "database": {
-    "path": "./voice_data/profiles/database.sqlite",
-    "backup_enabled": true,
-    "backup_interval_hours": 24,
-    "backup_path": "./voice_data/profiles/backups"
-  },
-  "session": {
-    "output_folder": "./voice_data/sessions",
-    "summary_interval_minutes": 5,
-    "max_segment_duration_seconds": 30,
-    "save_audio_cache": false,
-    "audio_cache_format": "wav"
-  },
-  "bridge": {
-    "shared_folder": "./voice_data/shared",
-    "poll_interval_ms": 500,
-    "command_timeout_seconds": 30,
-    "status_update_interval_seconds": 5
   },
   "logging": {
     "level": "Information",
@@ -65,7 +58,6 @@
     },
     "file": {
       "enabled": true,
-      "path": "./voice_data/logs/voxmind_{date}.log",
       "rolling_interval": "Day",
       "retained_file_count": 30
     }

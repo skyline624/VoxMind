@@ -1,4 +1,8 @@
+using System.Text;
+using FFMpegCore;
+using FFMpegCore.Pipes;
 using Microsoft.Extensions.Logging;
+using VoxMind.Core.Vad;
 using VoxMind.Parakeet;
 
 namespace VoxMind.Core.Transcription;
@@ -16,6 +20,7 @@ namespace VoxMind.Core.Transcription;
 public class ParakeetOnnxTranscriptionService : ITranscriptionService
 {
     private readonly ILogger<ParakeetOnnxTranscriptionService> _logger;
+    private readonly IVadService _vadService;
     private ModelInfo _info;
     private AudioPreprocessor? _preprocessor;
     private ParakeetEncoder? _encoder;
@@ -25,9 +30,13 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
 
     public ModelInfo Info => _info;
 
-    public ParakeetOnnxTranscriptionService(string modelDir, ILogger<ParakeetOnnxTranscriptionService> logger)
+    public ParakeetOnnxTranscriptionService(
+        string modelDir,
+        IVadService vadService,
+        ILogger<ParakeetOnnxTranscriptionService> logger)
     {
         _logger = logger;
+        _vadService = vadService;
         _info = new ModelInfo
         {
             ModelName = "parakeet-tdt-0.6b-v3-int8",
@@ -63,6 +72,9 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
         }
     }
 
+    /// <summary>
+    /// Transcrire un chunk court (&lt;12.5s) de PCM WAV 16kHz mono en mémoire (API live).
+    /// </summary>
     public async Task<TranscriptionResult> TranscribeChunkAsync(byte[] audioData, CancellationToken ct = default)
     {
         if (_preprocessor is null || _encoder is null || _decoder is null || _tokenDecoder is null)
@@ -70,7 +82,8 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
 
         try
         {
-            return await Task.Run(() => RunInference(audioData), ct);
+            float[] samples = ConvertWavToFloat32(audioData);
+            return await Task.Run(() => RunInferenceOnSamples(samples), ct);
         }
         catch (OperationCanceledException)
         {
@@ -83,9 +96,77 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
         }
     }
 
-    private TranscriptionResult RunInference(byte[] audioData)
+    /// <summary>
+    /// Transcrire un fichier audio (tout format) via VAD + Parakeet.
+    /// Le fichier est décodé en PCM float32, segmenté par le VAD, puis
+    /// chaque segment est transcrit individuellement avec son timestamp.
+    /// </summary>
+    public async Task<TranscriptionResult> TranscribeFileAsync(string filePath, CancellationToken ct = default)
     {
-        float[] samples = ConvertWavToFloat32(audioData);
+        if (_preprocessor is null || _encoder is null || _decoder is null || _tokenDecoder is null)
+            return new TranscriptionResult { Text = string.Empty };
+
+        float[] allSamples = await DecodeToFloat32Async(filePath, ct);
+        if (allSamples.Length == 0)
+            return new TranscriptionResult { Text = string.Empty };
+
+        IReadOnlyList<VadSegment> segments = _vadService.IsAvailable
+            ? _vadService.DetectSpeech(allSamples)
+            : FallbackChunks(allSamples);
+
+        _logger.LogInformation("Transcription de {File} : {Segs} segments VAD sur {Total:F1}s d'audio.",
+            Path.GetFileName(filePath), segments.Count, allSamples.Length / 16000.0);
+
+        var resultSegments = new List<TranscriptionSegment>();
+        var sb = new StringBuilder();
+        int idx = 0;
+
+        foreach (var seg in segments)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            TranscriptionResult r;
+            try
+            {
+                r = await Task.Run(() => RunInferenceOnSamples(seg.Samples), ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Segment {Idx} ignoré ({Start:F1}s→{End:F1}s) suite à une erreur d'inférence.", idx, seg.StartSeconds, seg.EndSeconds);
+                idx++;
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(r.Text))
+            {
+                idx++;
+                continue;
+            }
+
+            sb.Append(r.Text.Trim()).Append(' ');
+            resultSegments.Add(new TranscriptionSegment
+            {
+                Id = idx++,
+                Start = TimeSpan.FromSeconds(seg.StartSeconds),
+                End = TimeSpan.FromSeconds(seg.EndSeconds),
+                Text = r.Text.Trim(),
+                Confidence = r.Confidence,
+            });
+        }
+
+        return new TranscriptionResult
+        {
+            Text = sb.ToString().Trim(),
+            Segments = resultSegments,
+            Duration = TimeSpan.FromSeconds(allSamples.Length / 16000.0),
+            Language = "en",
+            Confidence = resultSegments.Count > 0
+                ? resultSegments.Average(s => s.Confidence) : 0f,
+        };
+    }
+
+    private TranscriptionResult RunInferenceOnSamples(float[] samples)
+    {
         if (samples.Length == 0)
             return new TranscriptionResult { Text = string.Empty };
 
@@ -113,30 +194,55 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
         };
     }
 
-    public async Task<TranscriptionResult> TranscribeFileAsync(string filePath, CancellationToken ct = default)
+    /// <summary>
+    /// Décode un fichier audio (tout format) en samples PCM float32 16kHz mono.
+    /// </summary>
+    private static async Task<float[]> DecodeToFloat32Async(string filePath, CancellationToken ct)
     {
-        var audioData = await File.ReadAllBytesAsync(filePath, ct);
-        return await TranscribeChunkAsync(audioData, ct);
-    }
+        using var ms = new MemoryStream();
+        var ext = Path.GetExtension(filePath).ToLowerInvariant();
 
-    public Task<string> DetectLanguageAsync(byte[] audioData) => Task.FromResult("en");
-
-    public Task LoadModelAsync(ModelSize size, ComputeBackend backend = ComputeBackend.Auto)
-    {
-        // Size/Backend are init-only; recreate ModelInfo to apply new values
-        _info = new ModelInfo
+        if (ext == ".wav")
         {
-            ModelName = _info.ModelName,
-            Size = size,
-            Backend = backend == ComputeBackend.Auto ? ComputeBackend.CPU : backend,
-            IsLoaded = _info.IsLoaded
-        };
-        return Task.CompletedTask;
+            var raw = await File.ReadAllBytesAsync(filePath, ct);
+            return ConvertWavToFloat32(raw);
+        }
+
+        await FFMpegArguments
+            .FromFileInput(filePath)
+            .OutputToPipe(new StreamPipeSink(ms), opts => opts
+                .WithAudioSamplingRate(16000)
+                .WithCustomArgument("-ac 1 -acodec pcm_s16le")
+                .ForceFormat("wav"))
+            .CancellableThrough(ct)
+            .ProcessAsynchronously(throwOnError: true);
+
+        return ConvertWavToFloat32(ms.ToArray());
     }
 
     /// <summary>
-    /// Convert WAV PCM 16-bit bytes to normalized float32 samples.
-    /// Parses WAV header to find data chunk; falls back to offset 44 for standard PCM WAV.
+    /// Chunking fixe de 8s sans overlap — fallback si VAD non disponible.
+    /// </summary>
+    private static IReadOnlyList<VadSegment> FallbackChunks(float[] samples, int sampleRate = 16000)
+    {
+        const int chunkSamples = 8 * 16000;
+        var result = new List<VadSegment>();
+        int offset = 0;
+        while (offset < samples.Length)
+        {
+            int len = Math.Min(chunkSamples, samples.Length - offset);
+            float[] chunk = samples[offset..(offset + len)];
+            result.Add(new VadSegment(
+                offset / (float)sampleRate,
+                (offset + len) / (float)sampleRate,
+                chunk));
+            offset += chunkSamples;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Convertit un buffer WAV PCM 16-bit signé en samples float32 normalisés [-1, 1].
     /// </summary>
     private static float[] ConvertWavToFloat32(byte[] wavData)
     {
@@ -149,7 +255,7 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
         {
             if (wavData[i] == 'd' && wavData[i + 1] == 'a' && wavData[i + 2] == 't' && wavData[i + 3] == 'a')
             {
-                dataOffset = i + 8; // "data" (4 bytes) + chunk size (4 bytes)
+                dataOffset = i + 8;
                 break;
             }
         }
@@ -162,6 +268,20 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
             samples[i] = BitConverter.ToInt16(wavData, dataOffset + i * 2) / 32768.0f;
 
         return samples;
+    }
+
+    public Task<string> DetectLanguageAsync(byte[] audioData) => Task.FromResult("en");
+
+    public Task LoadModelAsync(ModelSize size, ComputeBackend backend = ComputeBackend.Auto)
+    {
+        _info = new ModelInfo
+        {
+            ModelName = _info.ModelName,
+            Size = size,
+            Backend = backend == ComputeBackend.Auto ? ComputeBackend.CPU : backend,
+            IsLoaded = _info.IsLoaded
+        };
+        return Task.CompletedTask;
     }
 
     public void Dispose()

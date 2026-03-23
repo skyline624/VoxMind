@@ -1,14 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using VoxMind.Core.Audio;
-using VoxMind.Core.Bridge;
 using VoxMind.Core.Configuration;
 using VoxMind.Core.Database;
-using VoxMind.Core.RemoteClients;
 using VoxMind.Core.Session;
 using VoxMind.Core.SpeakerRecognition;
 using VoxMind.Core.Transcription;
+using VoxMind.Core.Vad;
 using System.Runtime.InteropServices;
 
 namespace VoxMind.Core.Extensions;
@@ -20,9 +18,10 @@ public static class ServiceCollectionExtensions
         // Configuration
         services.AddSingleton(config);
 
-        // Base de données
+        // Base de données — Singleton pour compatibilité avec les services Singleton (SessionManager, etc.)
         services.AddDbContext<VoxMindDbContext>(options =>
-            options.UseSqlite($"Data Source={config.Database.Path}"));
+            options.UseSqlite($"Data Source={config.Database.Path}"),
+            ServiceLifetime.Singleton);
 
         // Audio (sélection par plateforme)
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -30,11 +29,52 @@ public static class ServiceCollectionExtensions
         else
             services.AddSingleton<IAudioCapture, PortAudioCapture>();
 
-        // Services ML — transcription Parakeet ONNX (local, sans serveur Python)
+        // AudioSourceFactory (live / file)
+        services.AddSingleton<AudioSourceFactory>();
+
+        // VAD — Silero VAD via sherpa-onnx
+        if (config.Ml.Vad.Enabled)
+            services.AddSingleton<IVadService>(sp =>
+                new SherpaOnnxVadService(
+                    config.Ml.Vad,
+                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<SherpaOnnxVadService>>()));
+        else
+            services.AddSingleton<IVadService, DisabledVadService>();
+
+        // Moteur Parakeet ONNX (local, sans serveur Python)
         services.AddSingleton<ITranscriptionService>(sp =>
             new ParakeetOnnxTranscriptionService(
                 config.Ml.Transcription.ParakeetModelPath,
+                sp.GetRequiredService<IVadService>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ParakeetOnnxTranscriptionService>>()
+            )
+        );
+
+        // Moteur Whisper (Whisper.net, GGML local)
+        services.AddSingleton<WhisperNetTranscriptionService>(sp =>
+            new WhisperNetTranscriptionService(
+                config.Ml.Transcription.WhisperModelPath,
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<WhisperNetTranscriptionService>>()
+            )
+        );
+
+        // Moteur Cohere (stub — requiert service Python gRPC)
+        services.AddSingleton<CohereTranscriptionService>(sp =>
+            new CohereTranscriptionService(
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CohereTranscriptionService>>()
+            )
+        );
+
+        // Registre multi-engine
+        services.AddSingleton<TranscriptionEngineRegistry>(sp =>
+            new TranscriptionEngineRegistry(
+                new Dictionary<string, ITranscriptionService>
+                {
+                    ["parakeet"] = sp.GetRequiredService<ITranscriptionService>(),
+                    ["whisper"]  = sp.GetRequiredService<WhisperNetTranscriptionService>(),
+                    ["cohere"]   = sp.GetRequiredService<CohereTranscriptionService>(),
+                },
+                defaultModel: config.Ml.Transcription.DefaultModel
             )
         );
 
@@ -61,33 +101,14 @@ public static class ServiceCollectionExtensions
             )
         );
 
-        // Clients distants
-        services.AddSingleton<IRemoteClientRegistry>(sp =>
-            new RemoteClientRegistry(
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<RemoteClientRegistry>>(),
-                config.RemoteClients.HeartbeatTimeoutSeconds
-            )
-        );
-
-        // Bridge
-        services.AddSingleton<IExternalBridge>(sp =>
-            new FileBridge(
-                config.Bridge.SharedFolder,
-                sp.GetRequiredService<ISessionManager>(),
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<FileBridge>>(),
-                sp.GetService<IHostApplicationLifetime>(),
-                config.Bridge.PollIntervalMs,
-                config.Bridge.StatusUpdateIntervalSeconds,
-                sp.GetRequiredService<IRemoteClientRegistry>()
-            )
-        );
-
         return services;
     }
 
     public static IServiceCollection AddVoxMindDatabase(this IServiceCollection services, string dbPath)
     {
-        services.AddDbContext<VoxMindDbContext>(options => options.UseSqlite($"Data Source={dbPath}"));
+        services.AddDbContext<VoxMindDbContext>(options =>
+            options.UseSqlite($"Data Source={dbPath}"),
+            ServiceLifetime.Singleton);
         return services;
     }
 }

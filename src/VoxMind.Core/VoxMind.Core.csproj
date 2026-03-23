@@ -20,14 +20,6 @@
     <!-- Speaker Recognition — sherpa-onnx (C# pur, sans serveur Python) -->
     <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.12.32" />
 
-    <!-- gRPC -->
-    <PackageReference Include="Grpc.Net.Client" Version="2.76.0" />
-    <PackageReference Include="Grpc.Tools" Version="2.76.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Google.Protobuf" Version="3.28.0" />
-
     <!-- DI & Hosting -->
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
@@ -47,11 +39,10 @@
 
     <!-- Décodage multi-formats (MP3, WAV, OGG, Opus, WebM) via FFmpeg CLI -->
     <PackageReference Include="FFMpegCore" Version="5.1.0" />
-  </ItemGroup>
 
-  <ItemGroup>
-    <!-- Génération automatique du code gRPC C# depuis le proto -->
-    <Protobuf Include="../../protos/voxmind_client.proto" GrpcServices="Server" />
+    <!-- Transcription Whisper (whisper.cpp via GGML, 100% local) -->
+    <PackageReference Include="Whisper.net" Version="1.7.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.7.1" />
   </ItemGroup>
 
   <ItemGroup>

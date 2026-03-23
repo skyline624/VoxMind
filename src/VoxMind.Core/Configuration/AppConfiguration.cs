@@ -11,6 +11,7 @@ public class AppConfiguration
     public LoggingConfig Logging { get; set; } = new();
     public MetricsConfig Metrics { get; set; } = new();
     public RemoteClientsConfig RemoteClients { get; set; } = new();
+    public ApiConfig Api { get; set; } = new();
 
     /// <summary>
     /// Gets the base data directory for VoxMind.
@@ -79,12 +80,15 @@ public class MlConfig
 {
     public TranscriptionConfig Transcription { get; set; } = new();
     public SpeakerRecognitionConfig SpeakerRecognition { get; set; } = new();
+    public VadConfig Vad { get; set; } = new();
 }
 
 public class TranscriptionConfig
 {
     public string Engine { get; set; } = "parakeet";
     public string ParakeetModelPath { get; set; } = "./models/parakeet-tdt-0.6b-v3-int8";
+    public string WhisperModelPath { get; set; } = "./models/whisper-medium.bin";
+    public string DefaultModel { get; set; } = "parakeet";
 }
 
 public class SpeakerRecognitionConfig
@@ -155,6 +159,22 @@ public class MetricsConfig
     public bool Enabled { get; set; } = false;
     public int Port { get; set; } = 9090;
     public string Endpoint { get; set; } = "/metrics";
+}
+
+public class VadConfig
+{
+    public bool Enabled { get; set; } = true;
+    public string ModelPath { get; set; } = "./models/silero_vad.onnx";
+    public float Threshold { get; set; } = 0.5f;
+    public float MinSilenceDurationSeconds { get; set; } = 0.5f;
+    public float MinSpeechDurationSeconds { get; set; } = 0.25f;
+    public float MaxSegmentDurationSeconds { get; set; } = 10.0f;
+}
+
+public class ApiConfig
+{
+    public int Port { get; set; } = 8000;
+    public bool EnableSwagger { get; set; } = true;
 }
 
 public class RemoteClientsConfig

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using VoxMind.Core.Transcription;
+using VoxMind.Core.Vad;
 using Xunit;
 
 namespace VoxMind.Tests.Unit.Transcription;
@@ -12,6 +13,7 @@ public class ParakeetTranscriptionServiceTests : IDisposable
     {
         _service = new ParakeetOnnxTranscriptionService(
             "/nonexistent/model/path",
+            new DisabledVadService(),
             NullLogger<ParakeetOnnxTranscriptionService>.Instance);
     }
 
