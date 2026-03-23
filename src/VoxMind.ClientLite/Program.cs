@@ -40,7 +40,7 @@ internal class Program
                     new VoxMindClientService.VoxMindClientServiceClient(
                         sp.GetRequiredService<GrpcChannel>()));
                 services.AddSingleton<ClientRegistration>();
-                services.AddSingleton<NativeAudioCapture>();
+                services.AddSingleton<LiveAudioCapture>();
                 services.AddSingleton<ServerCommandHandler>();
                 services.AddHostedService<HeartbeatService>();
                 services.AddHostedService<AudioStreamClient>();

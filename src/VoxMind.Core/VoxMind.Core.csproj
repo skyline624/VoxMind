@@ -44,6 +44,9 @@
     <!-- Audio (conditionnel par plateforme) -->
     <PackageReference Include="NAudio" Version="2.2.1" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
     <PackageReference Include="PortAudioSharp2" Version="1.0.2" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
+
+    <!-- Décodage multi-formats (MP3, WAV, OGG, Opus, WebM) via FFmpeg CLI -->
+    <PackageReference Include="FFMpegCore" Version="5.1.0" />
   </ItemGroup>
 
   <ItemGroup>

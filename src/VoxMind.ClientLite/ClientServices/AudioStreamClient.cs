@@ -12,7 +12,7 @@ namespace VoxMind.ClientLite.ClientServices;
 public class AudioStreamClient : BackgroundService
 {
     private readonly VoxMindClientService.VoxMindClientServiceClient _grpc;
-    private readonly NativeAudioCapture _audioCapture;
+    private readonly LiveAudioCapture _audioCapture;
     private readonly ServerCommandHandler _commandHandler;
     private readonly ClientConfiguration _config;
     private readonly ILogger<AudioStreamClient> _logger;
@@ -21,7 +21,7 @@ public class AudioStreamClient : BackgroundService
 
     public AudioStreamClient(
         VoxMindClientService.VoxMindClientServiceClient grpc,
-        NativeAudioCapture audioCapture,
+        LiveAudioCapture audioCapture,
         ServerCommandHandler commandHandler,
         ClientConfiguration config,
         ILogger<AudioStreamClient> logger)

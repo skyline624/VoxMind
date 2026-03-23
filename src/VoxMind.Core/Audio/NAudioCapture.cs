@@ -12,6 +12,7 @@ public class NAudioCapture : IAudioCapture
     // NAudio.Wave.WaveInEvent _waveIn; — instancié à la demande
 
     public bool IsCapturing => _isCapturing;
+    public bool IsLive => true;
     public AudioConfiguration? CurrentConfig => _config;
     public event EventHandler<AudioChunkEventArgs>? AudioChunkReceived;
 

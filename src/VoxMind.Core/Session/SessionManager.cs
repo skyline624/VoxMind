@@ -12,6 +12,7 @@ namespace VoxMind.Core.Session;
 public class SessionManager : ISessionManager
 {
     private readonly IAudioCapture _audioCapture;
+    private readonly AudioSourceFactory? _audioSourceFactory;
     private readonly ITranscriptionService _transcriptionService;
     private readonly ISpeakerIdentificationService _speakerService;
     private readonly ISummaryGenerator _summaryGenerator;
@@ -30,6 +31,9 @@ public class SessionManager : ISessionManager
     private bool _isRemoteSession;
     private readonly object _lock = new();
 
+    // Source audio de la session en cours (peut changer selon sourceType)
+    private IAudioCapture _activeCapture;
+
     public SessionStatus Status => _status;
     public ListeningSession? CurrentSession => _currentSession;
     public bool IsListening => _status == SessionStatus.Listening || _status == SessionStatus.Paused;
@@ -44,9 +48,12 @@ public class SessionManager : ISessionManager
         ISummaryGenerator summaryGenerator,
         VoxMindDbContext db,
         ILogger<SessionManager> logger,
-        string sessionsOutputFolder = "/home/pc/voice_data/sessions")
+        string sessionsOutputFolder = "/home/pc/voice_data/sessions",
+        AudioSourceFactory? audioSourceFactory = null)
     {
         _audioCapture = audioCapture;
+        _activeCapture = audioCapture;
+        _audioSourceFactory = audioSourceFactory;
         _transcriptionService = transcriptionService;
         _speakerService = speakerService;
         _summaryGenerator = summaryGenerator;
@@ -56,7 +63,11 @@ public class SessionManager : ISessionManager
         Directory.CreateDirectory(sessionsOutputFolder);
     }
 
-    public async Task<ListeningSession> StartSessionAsync(string? name = null, CancellationToken ct = default)
+    public async Task<ListeningSession> StartSessionAsync(
+        string? name = null,
+        string sourceType = "live",
+        string? sourcePath = null,
+        CancellationToken ct = default)
     {
         if (_status != SessionStatus.Idle)
             throw new InvalidOperationException($"Impossible de démarrer : session déjà en cours ({_status}).");
@@ -84,6 +95,9 @@ public class SessionManager : ISessionManager
         _status = SessionStatus.Listening;
         _isRemoteSession = false;
 
+        // Sélectionner la source audio (live = micro, file = décodage FFmpeg)
+        _activeCapture = _audioSourceFactory?.Create(sourceType, sourcePath) ?? _audioCapture;
+
         // Canal de chunks audio (capacité bornée : 100 chunks = ~10s à 100ms/chunk)
         _audioChannel = Channel.CreateBounded<AudioChunk>(new BoundedChannelOptions(100)
         {
@@ -95,15 +109,19 @@ public class SessionManager : ISessionManager
         _processingTask = ProcessAudioChannelAsync(_processingCts.Token);
 
         // S'abonner à la capture audio
-        _audioCapture.AudioChunkReceived += OnAudioChunkReceived;
+        _activeCapture.AudioChunkReceived += OnAudioChunkReceived;
+        if (!_activeCapture.IsLive && _activeCapture is FileAudioSource fileSource)
+            fileSource.PlaybackCompleted += OnPlaybackCompleted;
+
         var config = new AudioConfiguration();
-        await _audioCapture.StartCaptureAsync(config, ct);
+        await _activeCapture.StartCaptureAsync(config, ct);
 
         // Timer de résumés intermédiaires toutes les 5 minutes
         _summaryTimer = new Timer(_ => GenerateIntermediateSummary(), null,
             TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
 
-        _logger.LogInformation("Session '{Name}' (ID={Id}) démarrée.", session.Name, session.Id);
+        _logger.LogInformation("Session '{Name}' (ID={Id}) démarrée (source: {Source}).",
+            session.Name, session.Id, sourceType);
         return session;
     }
 
@@ -166,8 +184,12 @@ public class SessionManager : ISessionManager
         // Arrêter la capture audio (seulement pour les sessions locales)
         if (!_isRemoteSession)
         {
-            _audioCapture.AudioChunkReceived -= OnAudioChunkReceived;
-            await _audioCapture.StopCaptureAsync();
+            _activeCapture.AudioChunkReceived -= OnAudioChunkReceived;
+            if (_activeCapture is FileAudioSource fs)
+                fs.PlaybackCompleted -= OnPlaybackCompleted;
+            await _activeCapture.StopCaptureAsync();
+            if (!_activeCapture.IsLive)
+                _activeCapture.Dispose();
         }
 
         // Arrêter le timer de résumés intermédiaires
@@ -240,6 +262,17 @@ public class SessionManager : ISessionManager
     {
         if (_status != SessionStatus.Listening) return;
         _audioChannel?.Writer.TryWrite(e.Chunk);
+    }
+
+    /// <summary>Appelé quand un fichier audio atteint sa fin — arrête la session automatiquement.</summary>
+    private void OnPlaybackCompleted(object? sender, EventArgs e)
+    {
+        _ = Task.Run(async () =>
+        {
+            try { await StopSessionAsync(); }
+            catch (InvalidOperationException) { /* session déjà arrêtée */ }
+            catch (Exception ex) { _logger.LogError(ex, "Erreur lors de l'auto-arrêt après fin de fichier."); }
+        });
     }
 
     private async Task ProcessAudioChannelAsync(CancellationToken ct)
@@ -417,6 +450,11 @@ public class SessionManager : ISessionManager
         _summaryTimer?.Dispose();
         _processingCts?.Cancel();
         _processingCts?.Dispose();
-        _audioCapture.AudioChunkReceived -= OnAudioChunkReceived;
+        _activeCapture.AudioChunkReceived -= OnAudioChunkReceived;
+        if (_activeCapture is FileAudioSource fs)
+        {
+            fs.PlaybackCompleted -= OnPlaybackCompleted;
+            fs.Dispose();
+        }
     }
 }

@@ -6,5 +6,6 @@ public enum AudioSourceType
     SystemAudio,
     HDMI,
     USB,
-    Remote
+    Remote,
+    File = 5
 }

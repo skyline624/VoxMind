@@ -15,10 +15,10 @@ namespace VoxMind.ClientLite.ClientServices.AudioCapture;
 /// Capture audio native : WaveInEvent/WASAPI sur Windows, PortAudioSharp2 sur Linux.
 /// Émet les données PCM 16kHz 16-bit mono via <see cref="AudioDataAvailable"/>.
 /// </summary>
-public class NativeAudioCapture : IDisposable
+public class LiveAudioCapture : IDisposable
 {
     private readonly ClientConfiguration _config;
-    private readonly ILogger<NativeAudioCapture> _logger;
+    private readonly ILogger<LiveAudioCapture> _logger;
     private bool _isCapturing;
     private bool _disposed;
 
@@ -31,7 +31,7 @@ public class NativeAudioCapture : IDisposable
     private PAStream? _paStream;
 #endif
 
-    public NativeAudioCapture(ClientConfiguration config, ILogger<NativeAudioCapture> logger)
+    public LiveAudioCapture(ClientConfiguration config, ILogger<LiveAudioCapture> logger)
     {
         _config = config;
         _logger = logger;

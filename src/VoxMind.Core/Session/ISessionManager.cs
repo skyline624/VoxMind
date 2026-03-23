@@ -18,8 +18,12 @@ public class SessionEndedEventArgs : EventArgs
 
 public interface ISessionManager : IDisposable
 {
-    /// <summary>Démarrer une session d'écoute (source locale)</summary>
-    Task<ListeningSession> StartSessionAsync(string? name = null, CancellationToken ct = default);
+    /// <summary>Démarrer une session d'écoute (source locale ou fichier)</summary>
+    Task<ListeningSession> StartSessionAsync(
+        string? name = null,
+        string sourceType = "live",
+        string? sourcePath = null,
+        CancellationToken ct = default);
 
     /// <summary>Démarrer une session d'écoute distante (sans capture audio locale)</summary>
     Task<ListeningSession> StartRemoteListeningAsync(string? name = null, CancellationToken ct = default);

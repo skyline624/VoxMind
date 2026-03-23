@@ -17,6 +17,9 @@ public interface IAudioCapture : IDisposable
     /// <summary>Indique si la capture est active</summary>
     bool IsCapturing { get; }
 
+    /// <summary>True = flux continu (micro), False = source finie (fichier)</summary>
+    bool IsLive { get; }
+
     /// <summary>Configuration actuelle</summary>
     AudioConfiguration? CurrentConfig { get; }
 }

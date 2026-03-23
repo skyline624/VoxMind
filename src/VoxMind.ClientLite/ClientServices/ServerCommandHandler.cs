@@ -13,14 +13,14 @@ public interface IServerCommandHandler
 /// <summary>Interprète et exécute les commandes reçues du serveur VoxMind.</summary>
 public class ServerCommandHandler : IServerCommandHandler
 {
-    private readonly NativeAudioCapture _audioCapture;
+    private readonly LiveAudioCapture _audioCapture;
     private readonly ILogger<ServerCommandHandler> _logger;
 
     public event EventHandler? StartListeningRequested;
     public event EventHandler? StopListeningRequested;
 
     public ServerCommandHandler(
-        NativeAudioCapture audioCapture,
+        LiveAudioCapture audioCapture,
         ILogger<ServerCommandHandler> logger)
     {
         _audioCapture = audioCapture;

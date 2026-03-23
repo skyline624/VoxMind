@@ -11,6 +11,7 @@ public class PortAudioCapture : IAudioCapture
     private bool _disposed;
 
     public bool IsCapturing => _isCapturing;
+    public bool IsLive => true;
     public AudioConfiguration? CurrentConfig => _config;
     public event EventHandler<AudioChunkEventArgs>? AudioChunkReceived;
 

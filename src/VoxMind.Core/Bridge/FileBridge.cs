@@ -127,8 +127,10 @@ public class FileBridge : IExternalBridge
             {
                 case CommandType.StartListening:
                     var name = command.Parameters?.TryGetValue("session_name", out var n) == true ? n?.ToString() : null;
-                    var session = await _sessionManager.StartSessionAsync(name);
-                    response.Data = new { session_id = session.Id, started_at = session.StartedAt };
+                    var sourceType = command.Parameters?.TryGetValue("source_type", out var st) == true ? st?.ToString() ?? "live" : "live";
+                    var sourcePath = command.Parameters?.TryGetValue("source_path", out var sp) == true ? sp?.ToString() : null;
+                    var session = await _sessionManager.StartSessionAsync(name, sourceType, sourcePath);
+                    response.Data = new { session_id = session.Id, started_at = session.StartedAt, source_type = sourceType };
                     break;
 
                 case CommandType.StopListening:
