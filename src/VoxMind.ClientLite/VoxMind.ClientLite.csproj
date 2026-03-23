@@ -12,6 +12,10 @@
     <SelfContained>true</SelfContained>
   </PropertyGroup>
 
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <!-- gRPC client -->
     <PackageReference Include="Grpc.Net.Client" Version="2.76.0" />

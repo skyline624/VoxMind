@@ -78,8 +78,8 @@ internal class Program
             switch (args[i])
             {
                 case "--server": config.ServerAddress = args[i + 1]; break;
-                case "--name":   config.ClientName = args[i + 1]; break;
-                case "--token":  config.SharedToken = args[i + 1]; break;
+                case "--name": config.ClientName = args[i + 1]; break;
+                case "--token": config.SharedToken = args[i + 1]; break;
             }
         }
 
