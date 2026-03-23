@@ -29,11 +29,11 @@ public static class ComputeBackendDetector
     public static string GetDeviceString(ComputeBackend backend) => backend switch
     {
         ComputeBackend.CUDA => "cuda",
-        ComputeBackend.MPS  => "mps",
+        ComputeBackend.MPS => "mps",
         ComputeBackend.ROCm => "hip",
-        ComputeBackend.CPU  => "cpu",
+        ComputeBackend.CPU => "cpu",
         ComputeBackend.Auto => GetDeviceString(DetectBestAvailable()),
-        _                   => "cpu"
+        _ => "cpu"
     };
 
     private static bool IsCudaAvailable()

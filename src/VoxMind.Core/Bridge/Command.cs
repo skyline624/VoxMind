@@ -42,27 +42,27 @@ public class BridgeCommand
 
     public CommandType ParsedCommand => Command.ToUpperInvariant() switch
     {
-        "START_LISTENING"   => CommandType.StartListening,
-        "STOP_LISTENING"    => CommandType.StopListening,
-        "PAUSE_LISTENING"   => CommandType.PauseListening,
-        "RESUME_LISTENING"  => CommandType.ResumeListening,
-        "GET_STATUS"        => CommandType.GetStatus,
-        "GET_SESSION"       => CommandType.GetSession,
-        "LIST_SESSIONS"     => CommandType.ListSessions,
-        "GET_SUMMARY"       => CommandType.GetSummary,
-        "GET_LAST_SUMMARY"  => CommandType.GetLastSummary,
-        "TRANSCRIBE_FILE"   => CommandType.TranscribeFile,
-        "SAVE_SPEAKER"      => CommandType.SaveSpeaker,
-        "MERGE_SPEAKERS"    => CommandType.MergeSpeakers,
-        "LINK_SPEAKERS"     => CommandType.LinkSpeakers,
-        "RENAME_SPEAKER"    => CommandType.RenameSpeaker,
-        "DELETE_SPEAKER"    => CommandType.DeleteSpeaker,
-        "LIST_SPEAKERS"     => CommandType.ListSpeakers,
-        "GET_SPEAKER"       => CommandType.GetSpeaker,
-        "IMPORT_SPEAKER"    => CommandType.ImportSpeaker,
-        "EXPORT_SPEAKER"    => CommandType.ExportSpeaker,
-        "SHUTDOWN"          => CommandType.Shutdown,
-        _                   => throw new ArgumentException($"Commande inconnue : {Command}")
+        "START_LISTENING" => CommandType.StartListening,
+        "STOP_LISTENING" => CommandType.StopListening,
+        "PAUSE_LISTENING" => CommandType.PauseListening,
+        "RESUME_LISTENING" => CommandType.ResumeListening,
+        "GET_STATUS" => CommandType.GetStatus,
+        "GET_SESSION" => CommandType.GetSession,
+        "LIST_SESSIONS" => CommandType.ListSessions,
+        "GET_SUMMARY" => CommandType.GetSummary,
+        "GET_LAST_SUMMARY" => CommandType.GetLastSummary,
+        "TRANSCRIBE_FILE" => CommandType.TranscribeFile,
+        "SAVE_SPEAKER" => CommandType.SaveSpeaker,
+        "MERGE_SPEAKERS" => CommandType.MergeSpeakers,
+        "LINK_SPEAKERS" => CommandType.LinkSpeakers,
+        "RENAME_SPEAKER" => CommandType.RenameSpeaker,
+        "DELETE_SPEAKER" => CommandType.DeleteSpeaker,
+        "LIST_SPEAKERS" => CommandType.ListSpeakers,
+        "GET_SPEAKER" => CommandType.GetSpeaker,
+        "IMPORT_SPEAKER" => CommandType.ImportSpeaker,
+        "EXPORT_SPEAKER" => CommandType.ExportSpeaker,
+        "SHUTDOWN" => CommandType.Shutdown,
+        _ => throw new ArgumentException($"Commande inconnue : {Command}")
     };
 }
 

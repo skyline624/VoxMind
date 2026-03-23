@@ -58,11 +58,11 @@ internal class Program
         var transcription = host.Services.GetRequiredService<VoxMind.Core.Transcription.ITranscriptionService>();
         var modelSize = config.Ml.Transcription.Model.ToLowerInvariant() switch
         {
-            "tiny"   => ModelSize.Tiny,
-            "small"  => ModelSize.Small,
+            "tiny" => ModelSize.Tiny,
+            "small" => ModelSize.Small,
             "medium" => ModelSize.Medium,
-            "large"  => ModelSize.Large,
-            _        => ModelSize.Base
+            "large" => ModelSize.Large,
+            _ => ModelSize.Base
         };
         await transcription.LoadModelAsync(modelSize);
 

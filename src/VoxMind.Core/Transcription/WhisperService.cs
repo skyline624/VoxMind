@@ -127,12 +127,12 @@ public class WhisperService : ITranscriptionService
 
     private static GgmlType ToGgmlType(ModelSize size) => size switch
     {
-        ModelSize.Tiny   => GgmlType.Tiny,
-        ModelSize.Base   => GgmlType.Base,
-        ModelSize.Small  => GgmlType.Small,
+        ModelSize.Tiny => GgmlType.Tiny,
+        ModelSize.Base => GgmlType.Base,
+        ModelSize.Small => GgmlType.Small,
         ModelSize.Medium => GgmlType.Medium,
-        ModelSize.Large  => GgmlType.LargeV3,
-        _                => GgmlType.Base
+        ModelSize.Large => GgmlType.LargeV3,
+        _ => GgmlType.Base
     };
 
     public void Dispose()

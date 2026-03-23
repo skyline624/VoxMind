@@ -163,8 +163,11 @@ public class SpeakerIdentificationService : ISpeakerIdentificationService
 
         _db.SpeakerEmbeddings.Add(new SpeakerEmbeddingEntity
         {
-            Id = embeddingId, ProfileId = profileId, FilePath = filePath,
-            CapturedAt = DateTime.UtcNow, InitialConfidence = confidence
+            Id = embeddingId,
+            ProfileId = profileId,
+            FilePath = filePath,
+            CapturedAt = DateTime.UtcNow,
+            InitialConfidence = confidence
         });
         await _db.SaveChangesAsync();
 
