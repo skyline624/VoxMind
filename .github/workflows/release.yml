@@ -6,10 +6,21 @@ on:
       - 'v*'
 
 jobs:
-  release:
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            runtime: linux-x64
+            extension: tar.gz
+          - os: windows-latest
+            runtime: win-x64
+            extension: zip
+          - os: macos-latest
+            runtime: osx-x64
+            extension: zip
+
+    runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v4
@@ -19,25 +30,50 @@ jobs:
       with:
         dotnet-version: '8.0'
 
-    - name: Build and Publish
-      run: |
-        dotnet build VoxMind.sln -c Release
-        dotnet publish src/VoxMind.CLI -c Release -o ./publish/linux-x64 -r linux-x64 --self-contained false
-        dotnet publish src/VoxMind.CLI -c Release -o ./publish/win-x64 -r win-x64 --self-contained false
+    - name: Publish VoxMind Server (CLI)
+      run: dotnet publish src/VoxMind.CLI -c Release -r ${{ matrix.runtime }} --self-contained -o ./publish/server
 
-    - name: Package
+    - name: Publish VoxMind ClientLite
+      run: dotnet publish src/VoxMind.ClientLite -c Release -r ${{ matrix.runtime }} --self-contained -o ./publish/client
+
+    - name: Package (Linux)
+      if: matrix.extension == 'tar.gz'
       run: |
-        cd publish
-        zip -r ../VoxMind-${{ github.ref_name }}-linux-x64.zip linux-x64/
-        zip -r ../VoxMind-${{ github.ref_name }}-win-x64.zip win-x64/
-        cd ../python_services
-        zip -r ../VoxMind-PythonServices-${{ github.ref_name }}.zip .
+        tar -czf VoxMind.Server-${{ matrix.runtime }}.tar.gz -C ./publish/server .
+        tar -czf VoxMind.ClientLite-${{ matrix.runtime }}.tar.gz -C ./publish/client .
+
+    - name: Package (Windows / macOS)
+      if: matrix.extension == 'zip'
+      shell: pwsh
+      run: |
+        Compress-Archive -Path ./publish/server/* -DestinationPath VoxMind.Server-${{ matrix.runtime }}.zip
+        Compress-Archive -Path ./publish/client/* -DestinationPath VoxMind.ClientLite-${{ matrix.runtime }}.zip
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-${{ matrix.runtime }}
+        path: VoxMind.*
+
+  release:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        merge-multiple: true
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
-        files: VoxMind-*.zip
+        files: artifacts/**
         draft: true
         generate_release_notes: true
+        prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

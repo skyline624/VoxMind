@@ -5,6 +5,9 @@
 torch>=2.2.0
 torchvision>=0.17.0
 
+# NVIDIA NeMo Parakeet (moteur de transcription alternatif, CPU-friendly)
+nemo_toolkit[asr]>=2.0.0
+
 # PyAnnote pour identification des locuteurs
 # Note: requiert un token HuggingFace (HUGGINGFACE_TOKEN env var)
 # pyannote.audio 4.0.4 est la version actuelle stable (mars 2026)

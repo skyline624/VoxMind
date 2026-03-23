@@ -38,8 +38,16 @@ public static class ServiceCollectionExtensions
             )
         );
 
-        // Services ML
-        services.AddSingleton<ITranscriptionService, WhisperService>();
+        // Services ML — sélection du moteur de transcription
+        if (config.Ml.Transcription.Engine == "parakeet")
+            services.AddSingleton<ITranscriptionService>(sp =>
+                new ParakeetTranscriptionService(
+                    config.Ml.Transcription.ParakeetEndpoint,
+                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ParakeetTranscriptionService>>()
+                )
+            );
+        else
+            services.AddSingleton<ITranscriptionService, WhisperService>();
         services.AddSingleton<ISpeakerIdentificationService>(sp =>
             new SpeakerIdentificationService(
                 sp.GetRequiredService<VoxMindDbContext>(),

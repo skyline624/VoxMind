@@ -6,6 +6,7 @@ Usage :
   python download_models.py --whisper base --pyannote --output /home/pc/voice_data/cache
   python download_models.py --whisper tiny   # Seulement Whisper Tiny
   python download_models.py --pyannote       # Seulement PyAnnote
+  python download_models.py --parakeet       # Seulement Parakeet (nvidia/parakeet-ctc-1.1b)
 """
 
 import argparse
@@ -69,6 +70,28 @@ def download_pyannote(output_dir: str):
         sys.exit(1)
 
 
+def download_parakeet(output_dir: str):
+    """Télécharge le modèle Parakeet via NVIDIA NeMo."""
+    print("Téléchargement du modèle Parakeet (nvidia/parakeet-ctc-1.1b)...")
+    try:
+        import nemo.collections.asr as nemo_asr
+
+        parakeet_dir = os.path.join(output_dir, "parakeet")
+        os.makedirs(parakeet_dir, exist_ok=True)
+
+        model = nemo_asr.models.EncDecCTCModelBPE.from_pretrained("nvidia/parakeet-ctc-1.1b")
+        model_path = os.path.join(parakeet_dir, "parakeet-ctc-1.1b.nemo")
+        model.save_to(model_path)
+        print(f"Parakeet téléchargé dans {model_path}")
+        del model
+    except ImportError:
+        print("ERREUR: nemo_toolkit non installé. Exécuter : pip install nemo_toolkit[asr]")
+        sys.exit(1)
+    except Exception as e:
+        print(f"ERREUR lors du téléchargement Parakeet: {e}")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="VoxMind - Téléchargement des modèles ML")
     parser.add_argument(
@@ -82,13 +105,18 @@ if __name__ == "__main__":
         help="Télécharger les modèles PyAnnote (requiert HUGGINGFACE_TOKEN)"
     )
     parser.add_argument(
+        "--parakeet",
+        action="store_true",
+        help="Télécharger le modèle Parakeet (nvidia/parakeet-ctc-1.1b)"
+    )
+    parser.add_argument(
         "--output",
         default=os.path.expanduser("~/voice_data/cache"),
         help="Répertoire de sortie des modèles"
     )
     args = parser.parse_args()
 
-    if not args.whisper and not args.pyannote:
+    if not args.whisper and not args.pyannote and not args.parakeet:
         parser.print_help()
         sys.exit(1)
 
@@ -99,5 +127,8 @@ if __name__ == "__main__":
 
     if args.pyannote:
         download_pyannote(args.output)
+
+    if args.parakeet:
+        download_parakeet(args.output)
 
     print("\nTéléchargement terminé !")

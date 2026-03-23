@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package voxmind.parakeet;
+
+import "google/protobuf/empty.proto";
+
+option csharp_namespace = "VoxMind.Grpc";
+
+service ParakeetTranscription {
+    rpc Transcribe(ParakeetAudioData) returns (ParakeetTranscriptionResult);
+    rpc GetModelInfo(google.protobuf.Empty) returns (ParakeetModelInfo);
+}
+
+message ParakeetAudioData {
+    bytes audio_data = 1;
+    int32 sample_rate = 2;
+}
+
+message ParakeetTranscriptionResult {
+    string text = 1;
+    float confidence = 2;
+    string language = 3;
+}
+
+message ParakeetModelInfo {
+    string model_name = 1;
+    string version = 2;
+    bool is_loaded = 3;
+}

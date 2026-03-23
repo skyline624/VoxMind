@@ -56,8 +56,9 @@ dotnet run --project src/VoxMind.CLI
 VoxMind (C# .NET 8)  ←→  Python Services (gRPC)
         │                        │
    WhisperService           PyAnnote Server
-   SessionManager            (port 50051)
-   FileBridge (JSON)
+   ParakeetService           (port 50051)
+   SessionManager        Parakeet ASR Server
+   FileBridge (JSON)         (port 50053)
    SQLite Database
 ```
 
@@ -72,6 +73,77 @@ echo '{"command":"START_LISTENING","parameters":{"session_name":"reunion"}}' \
 
 cat voice_data/shared/status_from_voxmind.json
 ```
+
+## Moteurs de Transcription
+
+| Moteur | Modèle | CPU-friendly | Précision |
+|--------|--------|-------------|-----------|
+| **Parakeet** (défaut) | `nvidia/parakeet-ctc-1.1b` | Oui | Excellente (anglais) |
+| **Whisper** | `Whisper.net` (ggml) | Moyen | Très bonne (multilingue) |
+
+Configurer dans `appsettings.json` :
+```json
+"Ml": {
+  "Transcription": {
+    "Engine": "parakeet",
+    "ParakeetEndpoint": "localhost:50053"
+  }
+}
+```
+
+Démarrer le service Parakeet avant le serveur VoxMind :
+```bash
+python python_services/parakeet_server.py --port 50053
+```
+
+---
+
+## Downloads
+
+### Latest Release
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/skyline624/VoxMind)](https://github.com/skyline624/VoxMind/releases/latest)
+
+### VoxMind Server
+| Platform | Architecture | Download |
+|----------|--------------|----------|
+| Windows | x64 | [VoxMind.Server-win-x64.zip](https://github.com/skyline624/VoxMind/releases/latest/download/VoxMind.Server-win-x64.zip) |
+| Linux | x64 | [VoxMind.Server-linux-x64.tar.gz](https://github.com/skyline624/VoxMind/releases/latest/download/VoxMind.Server-linux-x64.tar.gz) |
+| macOS | x64 | [VoxMind.Server-osx-x64.zip](https://github.com/skyline624/VoxMind/releases/latest/download/VoxMind.Server-osx-x64.zip) |
+
+### VoxMind ClientLite
+| Platform | Architecture | Download |
+|----------|--------------|----------|
+| Windows | x64 | [VoxMind.ClientLite-win-x64.zip](https://github.com/skyline624/VoxMind/releases/latest/download/VoxMind.ClientLite-win-x64.zip) |
+| Linux | x64 | [VoxMind.ClientLite-linux-x64.tar.gz](https://github.com/skyline624/VoxMind/releases/latest/download/VoxMind.ClientLite-linux-x64.tar.gz) |
+| macOS | x64 | [VoxMind.ClientLite-osx-x64.zip](https://github.com/skyline624/VoxMind/releases/latest/download/VoxMind.ClientLite-osx-x64.zip) |
+
+## Installation
+
+### Server
+```bash
+# Windows
+unzip VoxMind.Server-win-x64.zip
+./VoxMind.Server.exe
+
+# Linux
+tar -xzf VoxMind.Server-linux-x64.tar.gz
+./VoxMind.Server
+```
+
+### ClientLite
+```bash
+# Windows
+unzip VoxMind.ClientLite-win-x64.zip
+./VoxMind.ClientLite.exe configure --server http://server:50052 --name "My PC"
+./VoxMind.ClientLite.exe start
+
+# Linux
+tar -xzf VoxMind.ClientLite-linux-x64.tar.gz
+./VoxMind.ClientLite configure --server http://server:50052 --name "My PC"
+./VoxMind.ClientLite start
+```
+
+---
 
 ## Licence
 

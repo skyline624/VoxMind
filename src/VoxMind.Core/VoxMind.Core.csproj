@@ -54,6 +54,7 @@
     <!-- Génération automatique du code gRPC C# depuis le proto -->
     <Protobuf Include="../../python_services/protos/speaker.proto" GrpcServices="Client" />
     <Protobuf Include="../../protos/voxmind_client.proto" GrpcServices="Server" />
+    <Protobuf Include="../../protos/parakeet.proto" GrpcServices="Client" />
   </ItemGroup>
 
 </Project>

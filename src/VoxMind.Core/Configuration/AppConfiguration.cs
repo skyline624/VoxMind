@@ -48,6 +48,8 @@ public class TranscriptionConfig
     public string Language { get; set; } = "auto";
     public string ComputeBackend { get; set; } = "auto";
     public float Temperature { get; set; } = 0.0f;
+    public string Engine { get; set; } = "whisper";                    // "whisper" | "parakeet"
+    public string ParakeetEndpoint { get; set; } = "localhost:50053";
 }
 
 public class SpeakerRecognitionConfig
