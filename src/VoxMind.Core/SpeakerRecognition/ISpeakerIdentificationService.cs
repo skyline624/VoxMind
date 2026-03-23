@@ -11,6 +11,12 @@ public interface ISpeakerIdentificationService : IDisposable
     /// <summary>Identifier un locuteur à partir d'une empreinte</summary>
     Task<SpeakerIdentificationResult> IdentifyAsync(float[] embedding);
 
+    /// <summary>Extraire l'embedding et identifier directement depuis des données audio WAV PCM 16kHz</summary>
+    Task<SpeakerIdentificationResult> IdentifyFromAudioAsync(byte[] audioData, CancellationToken ct = default);
+
+    /// <summary>Extraire uniquement l'embedding vocal depuis des données audio WAV PCM 16kHz (pour enrollment)</summary>
+    Task<float[]?> ExtractEmbeddingAsync(byte[] audioData, CancellationToken ct = default);
+
     /// <summary>Obtenir un profil par ID</summary>
     Task<SpeakerProfile?> GetProfileAsync(Guid profileId);
 

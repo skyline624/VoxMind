@@ -43,22 +43,25 @@ public class MlConfig
 
 public class TranscriptionConfig
 {
-    public string Model { get; set; } = "base";
-    public string ModelPath { get; set; } = "/home/pc/voice_data/cache/whisper";
-    public string Language { get; set; } = "auto";
-    public string ComputeBackend { get; set; } = "auto";
-    public float Temperature { get; set; } = 0.0f;
-    public string Engine { get; set; } = "whisper";                    // "whisper" | "parakeet"
-    public string ParakeetEndpoint { get; set; } = "localhost:50053";
+    public string Engine { get; set; } = "parakeet";
+    public string ParakeetModelPath { get; set; } = "./models/parakeet-tdt-0.6b-v3-int8";
 }
 
 public class SpeakerRecognitionConfig
 {
     public bool Enabled { get; set; } = true;
-    public string PyannoteEndpoint { get; set; } = "localhost:50051";
     public float ConfidenceThreshold { get; set; } = 0.7f;
-    public int EmbeddingSize { get; set; } = 512;
-    public int MaxEnrollmentDurationSeconds { get; set; } = 60;
+    public SherpaOnnxConfig SherpaOnnx { get; set; } = new();
+}
+
+public class SherpaOnnxConfig
+{
+    public string SegmentationModelPath { get; set; }
+        = "./models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx";
+    public string EmbeddingModelPath { get; set; }
+        = "./models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
+    public int NumThreads { get; set; } = 4;
+    public float ClusteringThreshold { get; set; } = 0.5f;
 }
 
 public class DatabaseConfig

@@ -15,7 +15,6 @@ public class SessionManagerTests : IDisposable
     private readonly Mock<IAudioCapture> _mockAudio;
     private readonly Mock<ITranscriptionService> _mockTranscription;
     private readonly Mock<ISpeakerIdentificationService> _mockSpeaker;
-    private readonly Mock<IPyAnnoteClient> _mockPyAnnote;
     private readonly Mock<ISummaryGenerator> _mockSummary;
     private readonly VoxMindDbContext _db;
     private readonly SessionManager _manager;
@@ -25,7 +24,6 @@ public class SessionManagerTests : IDisposable
         _mockAudio = new Mock<IAudioCapture>();
         _mockTranscription = new Mock<ITranscriptionService>();
         _mockSpeaker = new Mock<ISpeakerIdentificationService>();
-        _mockPyAnnote = new Mock<IPyAnnoteClient>();
         _mockSummary = new Mock<ISummaryGenerator>();
 
         // DB en mémoire pour les tests
@@ -47,7 +45,6 @@ public class SessionManagerTests : IDisposable
             _mockAudio.Object,
             _mockTranscription.Object,
             _mockSpeaker.Object,
-            _mockPyAnnote.Object,
             _mockSummary.Object,
             _db,
             NullLogger<SessionManager>.Instance,

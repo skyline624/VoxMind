@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using VoxMind.Core.Configuration;
 using VoxMind.Core.Database;
 using VoxMind.Core.SpeakerRecognition;
 using Xunit;
@@ -10,7 +10,7 @@ namespace VoxMind.Tests.Unit.SpeakerRecognition;
 public class SpeakerMergeTests : IDisposable
 {
     private readonly VoxMindDbContext _db;
-    private readonly SpeakerIdentificationService _service;
+    private readonly SherpaOnnxSpeakerService _service;
     private readonly string _tmpDir;
 
     public SpeakerMergeTests()
@@ -23,10 +23,13 @@ public class SpeakerMergeTests : IDisposable
         _tmpDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(_tmpDir);
 
-        var mockPyAnnote = new Mock<IPyAnnoteClient>();
-        _service = new SpeakerIdentificationService(
-            _db, mockPyAnnote.Object,
-            NullLogger<SpeakerIdentificationService>.Instance,
+        var config = new SpeakerRecognitionConfig
+        {
+            SherpaOnnx = new SherpaOnnxConfig { EmbeddingModelPath = "nonexistent.onnx" }
+        };
+        _service = new SherpaOnnxSpeakerService(
+            config, _db,
+            NullLogger<SherpaOnnxSpeakerService>.Instance,
             embeddingsDir: _tmpDir
         );
     }

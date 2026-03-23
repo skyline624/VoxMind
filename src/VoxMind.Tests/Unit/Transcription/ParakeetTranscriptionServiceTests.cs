@@ -6,16 +6,13 @@ namespace VoxMind.Tests.Unit.Transcription;
 
 public class ParakeetTranscriptionServiceTests : IDisposable
 {
-    // Port intentionnellement fermé pour tester la gestion d'erreur
-    private const string UnreachableEndpoint = "localhost:59998";
-
-    private readonly ParakeetTranscriptionService _service;
+    private readonly ParakeetOnnxTranscriptionService _service;
 
     public ParakeetTranscriptionServiceTests()
     {
-        _service = new ParakeetTranscriptionService(
-            UnreachableEndpoint,
-            NullLogger<ParakeetTranscriptionService>.Instance);
+        _service = new ParakeetOnnxTranscriptionService(
+            "/nonexistent/model/path",
+            NullLogger<ParakeetOnnxTranscriptionService>.Instance);
     }
 
     [Fact]
@@ -30,11 +27,11 @@ public class ParakeetTranscriptionServiceTests : IDisposable
     public void Info_InitialState_IsNotLoaded()
     {
         Assert.False(_service.Info.IsLoaded);
-        Assert.Equal("parakeet-ctc-1.1b", _service.Info.ModelName);
+        Assert.Equal("parakeet-tdt-0.6b-v3-int8", _service.Info.ModelName);
     }
 
     [Fact]
-    public async Task TranscribeChunk_WhenGrpcUnavailable_ReturnsEmptyResult()
+    public async Task TranscribeChunk_WhenModelNotLoaded_ReturnsEmptyResult()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 

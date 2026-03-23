@@ -14,7 +14,6 @@ public class SessionManager : ISessionManager
     private readonly IAudioCapture _audioCapture;
     private readonly ITranscriptionService _transcriptionService;
     private readonly ISpeakerIdentificationService _speakerService;
-    private readonly IPyAnnoteClient _pyAnnoteClient;
     private readonly ISummaryGenerator _summaryGenerator;
     private readonly VoxMindDbContext _db;
     private readonly ILogger<SessionManager> _logger;
@@ -42,7 +41,6 @@ public class SessionManager : ISessionManager
         IAudioCapture audioCapture,
         ITranscriptionService transcriptionService,
         ISpeakerIdentificationService speakerService,
-        IPyAnnoteClient pyAnnoteClient,
         ISummaryGenerator summaryGenerator,
         VoxMindDbContext db,
         ILogger<SessionManager> logger,
@@ -51,7 +49,6 @@ public class SessionManager : ISessionManager
         _audioCapture = audioCapture;
         _transcriptionService = transcriptionService;
         _speakerService = speakerService;
-        _pyAnnoteClient = pyAnnoteClient;
         _summaryGenerator = summaryGenerator;
         _db = db;
         _logger = logger;
@@ -268,14 +265,17 @@ public class SessionManager : ISessionManager
 
     private async Task ProcessChunkAsync(AudioChunk chunk, CancellationToken ct)
     {
-        // Étape 1 : Extraction de l'embedding PyAnnote
+        // Étape 1 : Identification du locuteur via sherpa-onnx (extraction embedding + identification)
         SpeakerIdentificationResult? identification = null;
-        var embResult = await _pyAnnoteClient.ExtractEmbeddingAsync(chunk.RawData, ct);
-        if (embResult.Success && embResult.Embedding.Length > 0)
+        try
         {
-            identification = await _speakerService.IdentifyAsync(embResult.Embedding);
+            identification = await _speakerService.IdentifyFromAudioAsync(chunk.RawData, ct);
             if (identification.IsIdentified && identification.ProfileId.HasValue)
                 await _speakerService.UpdateLastSeenAsync(identification.ProfileId.Value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Identification du locuteur non disponible pour ce chunk.");
         }
 
         // Étape 2 : Transcription

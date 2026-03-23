@@ -17,12 +17,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
 
-    <!-- ML / Transcription : Whisper.net (wrapper whisper.cpp, plus stable que TorchSharp pour Whisper) -->
-    <PackageReference Include="Whisper.net" Version="1.7.0" />
-    <PackageReference Include="Whisper.net.Runtime" Version="1.7.0" />
-
-    <!-- TorchSharp (gardé pour futurs modèles ML, pas utilisé pour Whisper) -->
-    <PackageReference Include="TorchSharp" Version="0.106.0" />
+    <!-- Speaker Recognition — sherpa-onnx (C# pur, sans serveur Python) -->
+    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.12.32" />
 
     <!-- gRPC -->
     <PackageReference Include="Grpc.Net.Client" Version="2.76.0" />
@@ -52,9 +48,11 @@
 
   <ItemGroup>
     <!-- Génération automatique du code gRPC C# depuis le proto -->
-    <Protobuf Include="../../python_services/protos/speaker.proto" GrpcServices="Client" />
     <Protobuf Include="../../protos/voxmind_client.proto" GrpcServices="Server" />
-    <Protobuf Include="../../protos/parakeet.proto" GrpcServices="Client" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../VoxMind.Parakeet/VoxMind.Parakeet.csproj" />
   </ItemGroup>
 
 </Project>

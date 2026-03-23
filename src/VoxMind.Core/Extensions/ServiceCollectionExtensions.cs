@@ -30,30 +30,20 @@ public static class ServiceCollectionExtensions
         else
             services.AddSingleton<IAudioCapture, PortAudioCapture>();
 
-        // gRPC PyAnnote
-        services.AddSingleton<IPyAnnoteClient>(sp =>
-            new PyAnnoteGrpcClient(
-                config.Ml.SpeakerRecognition.PyannoteEndpoint,
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PyAnnoteGrpcClient>>()
+        // Services ML — transcription Parakeet ONNX (local, sans serveur Python)
+        services.AddSingleton<ITranscriptionService>(sp =>
+            new ParakeetOnnxTranscriptionService(
+                config.Ml.Transcription.ParakeetModelPath,
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ParakeetOnnxTranscriptionService>>()
             )
         );
 
-        // Services ML — sélection du moteur de transcription
-        if (config.Ml.Transcription.Engine == "parakeet")
-            services.AddSingleton<ITranscriptionService>(sp =>
-                new ParakeetTranscriptionService(
-                    config.Ml.Transcription.ParakeetEndpoint,
-                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ParakeetTranscriptionService>>()
-                )
-            );
-        else
-            services.AddSingleton<ITranscriptionService, WhisperService>();
+        // Speaker recognition — sherpa-onnx (local, sans serveur Python)
         services.AddSingleton<ISpeakerIdentificationService>(sp =>
-            new SpeakerIdentificationService(
+            new SherpaOnnxSpeakerService(
+                config.Ml.SpeakerRecognition,
                 sp.GetRequiredService<VoxMindDbContext>(),
-                sp.GetRequiredService<IPyAnnoteClient>(),
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<SpeakerIdentificationService>>(),
-                config.Ml.SpeakerRecognition.ConfidenceThreshold
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<SherpaOnnxSpeakerService>>()
             )
         );
 
@@ -64,7 +54,6 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IAudioCapture>(),
                 sp.GetRequiredService<ITranscriptionService>(),
                 sp.GetRequiredService<ISpeakerIdentificationService>(),
-                sp.GetRequiredService<IPyAnnoteClient>(),
                 sp.GetRequiredService<ISummaryGenerator>(),
                 sp.GetRequiredService<VoxMindDbContext>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<SessionManager>>(),

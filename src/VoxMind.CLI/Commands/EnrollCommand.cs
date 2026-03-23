@@ -20,12 +20,11 @@ public static class EnrollCommand
             var ct = ctx.GetCancellationToken();
 
             var speakerService = services.GetRequiredService<ISpeakerIdentificationService>();
-            var pyAnnote = services.GetRequiredService<IPyAnnoteClient>();
             var audio = services.GetRequiredService<IAudioCapture>();
 
-            if (!await pyAnnote.PingAsync(ct))
+            if (!await speakerService.CheckHealthAsync())
             {
-                ColorConsole.WriteError("Le service PyAnnote n'est pas disponible. Démarrer pyannote_server.py d'abord.");
+                ColorConsole.WriteError("Le service de reconnaissance vocale n'est pas disponible (modèle sherpa-onnx manquant).");
                 Environment.Exit((int)ExitCode.PyAnnoteError);
                 return;
             }
@@ -55,14 +54,15 @@ public static class EnrollCommand
             var combinedAudio = CombineChunks(chunks);
             ColorConsole.WriteInfo($"Audio capturé: {combinedAudio.Length / (16000 * 2)} secondes. Extraction de l'embedding...");
 
-            var embResult = await pyAnnote.ExtractEmbeddingAsync(combinedAudio, ct);
-            if (!embResult.Success)
+            var embedding = await speakerService.ExtractEmbeddingAsync(combinedAudio, ct);
+            if (embedding is null)
             {
-                ColorConsole.WriteError($"Extraction d'embedding échouée: {embResult.Error}");
+                ColorConsole.WriteError("Extraction d'embedding échouée.");
                 return;
             }
 
-            var profile = await speakerService.EnrollSpeakerAsync(name, embResult.Embedding, embResult.DurationUsed);
+            var durationSeconds = (float)combinedAudio.Length / (16000 * 2);
+            var profile = await speakerService.EnrollSpeakerAsync(name, embedding, 1.0f, (int)durationSeconds);
             ColorConsole.WriteSuccess($"Locuteur '{name}' enregistré avec succès (ID: {profile.Id})");
         });
 

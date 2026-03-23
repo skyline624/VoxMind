@@ -71,17 +71,9 @@ internal class Program
             await db.Database.EnsureCreatedAsync(cts.Token);
         }
 
-        // Charger le modèle Whisper au démarrage
+        // Initialiser le service de transcription Parakeet ONNX
         var transcription = app.Services.GetRequiredService<ITranscriptionService>();
-        var modelSize = config.Ml.Transcription.Model.ToLowerInvariant() switch
-        {
-            "tiny" => ModelSize.Tiny,
-            "small" => ModelSize.Small,
-            "medium" => ModelSize.Medium,
-            "large" => ModelSize.Large,
-            _ => ModelSize.Base
-        };
-        await transcription.LoadModelAsync(modelSize);
+        await transcription.LoadModelAsync(ModelSize.Small);
 
         // Si aucun argument : mode interactif
         if (args.Length == 0)

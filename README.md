@@ -4,38 +4,38 @@ Système local de transcription vocale en temps réel avec identification automa
 
 ## Fonctionnalités
 
-- Transcription vocale temps réel (Whisper)
-- Identification des locuteurs (PyAnnote)
+- Transcription vocale temps réel (Parakeet TDT ONNX — 100% local, sans Python)
+- Identification des locuteurs (sherpa-onnx — 100% local, sans Python)
 - Mode écoute continu avec résumés automatiques
 - Communication externe via bridge JSON file-based (Cortana/OpenClaw)
-- Support multi-plateforme : CPU, CUDA (NVIDIA), ROCm (AMD Linux)
+- Support multi-plateforme : CPU (x64)
 
 ## Prérequis
 
 - .NET 8.0+
-- Python 3.10+
 - PortAudio (`libportaudio2`, Linux) ou NAudio (Windows)
-- `ffmpeg`
-- Token HuggingFace (pour PyAnnote)
-- CUDA 12.x (optionnel, pour accélération GPU NVIDIA)
 
 ## Installation Rapide
 
 ```bash
 # 1. Installer les dépendances système (Ubuntu/Debian)
-sudo apt-get install -y python3 python3-venv python3-pip portaudio19-dev libportaudio2 ffmpeg
+sudo apt-get install -y portaudio19-dev libportaudio2
 
-# 2. Lancer le script d'installation
-chmod +x install.sh
-./install.sh
+# 2. Télécharger les modèles Parakeet TDT (HuggingFace)
+mkdir -p models/parakeet-tdt-0.6b-v3-int8
+cd models/parakeet-tdt-0.6b-v3-int8
+wget https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/nemo128.onnx
+wget https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/encoder-model.int8.onnx
+wget https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/decoder_joint-model.int8.onnx
+wget https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/vocab.txt
+cd ../..
 
-# 3. Configurer le token HuggingFace
-export HUGGINGFACE_TOKEN=votre_token
+# 3. Télécharger le modèle sherpa-onnx (speaker recognition)
+mkdir -p models
+wget -O models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx \
+  https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx
 
-# 4. Télécharger les modèles
-python python_services/download_models.py --whisper base --pyannote
-
-# 5. Lancer VoxMind
+# 4. Lancer VoxMind
 dotnet run --project src/VoxMind.CLI
 ```
 
@@ -53,12 +53,12 @@ dotnet run --project src/VoxMind.CLI
 ## Architecture
 
 ```
-VoxMind (C# .NET 8)  ←→  Python Services (gRPC)
-        │                        │
-   WhisperService           PyAnnote Server
-   ParakeetService           (port 50051)
-   SessionManager        Parakeet ASR Server
-   FileBridge (JSON)         (port 50053)
+VoxMind (C# .NET 8) — 100% local, sans Python
+        │
+   ParakeetOnnxTranscriptionService   (Microsoft.ML.OnnxRuntime)
+   SherpaOnnxSpeakerService           (org.k2fsa.sherpa.onnx)
+   SessionManager
+   FileBridge (JSON)
    SQLite Database
 ```
 
@@ -74,26 +74,35 @@ echo '{"command":"START_LISTENING","parameters":{"session_name":"reunion"}}' \
 cat voice_data/shared/status_from_voxmind.json
 ```
 
-## Moteurs de Transcription
+## Transcription
 
-| Moteur | Modèle | CPU-friendly | Précision |
-|--------|--------|-------------|-----------|
-| **Parakeet** (défaut) | `nvidia/parakeet-ctc-1.1b` | Oui | Excellente (anglais) |
-| **Whisper** | `Whisper.net` (ggml) | Moyen | Très bonne (multilingue) |
+Moteur unique : **Parakeet TDT ONNX** (`smcleod/parakeet-tdt-0.6b-v3-int8`), inférence locale via `Microsoft.ML.OnnxRuntime`.
 
-Configurer dans `appsettings.json` :
+Configurer le chemin du modèle dans `appsettings.json` :
 ```json
 "Ml": {
   "Transcription": {
-    "Engine": "parakeet",
-    "ParakeetEndpoint": "localhost:50053"
+    "ParakeetModelPath": "./models/parakeet-tdt-0.6b-v3-int8"
   }
 }
 ```
 
-Démarrer le service Parakeet avant le serveur VoxMind :
-```bash
-python python_services/parakeet_server.py --port 50053
+## Identification des Locuteurs
+
+Moteur : **sherpa-onnx** (`org.k2fsa.sherpa.onnx`), embedding ERes2Net local.
+
+Configurer dans `appsettings.json` :
+```json
+"Ml": {
+  "SpeakerRecognition": {
+    "Enabled": true,
+    "ConfidenceThreshold": 0.7,
+    "SherpaOnnx": {
+      "EmbeddingModelPath": "./models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
+      "NumThreads": 4
+    }
+  }
+}
 ```
 
 ---
