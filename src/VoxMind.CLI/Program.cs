@@ -15,6 +15,10 @@ internal class Program
 {
     static async Task<int> Main(string[] args)
     {
+        // Ensure directories exist before any I/O
+        var dataDir = VoxMindDirectories.EnsureDirectories();
+        Console.WriteLine($"Data directory: {dataDir}");
+
         // Chargement de la configuration
         var config = ConfigurationLoader.LoadOrDefault();
 

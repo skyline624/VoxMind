@@ -24,35 +24,35 @@
   },
   "ml": {
     "transcription": {
-      "model": "base",
-      "model_path": "/home/pc/voice_data/cache/whisper",
-      "language": "auto",
-      "compute_backend": "auto",
-      "temperature": 0.0
+      "engine": "parakeet",
+      "parakeet_model_path": "./models/parakeet-tdt-0.6b-v3-int8"
     },
     "speaker_recognition": {
       "enabled": true,
-      "pyannote_endpoint": "localhost:50051",
       "confidence_threshold": 0.7,
-      "embedding_size": 512,
-      "max_enrollment_duration_seconds": 60
+      "sherpa_onnx": {
+        "segmentation_model_path": "./models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx",
+        "embedding_model_path": "./models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
+        "num_threads": 4,
+        "clustering_threshold": 0.5
+      }
     }
   },
   "database": {
-    "path": "/home/pc/voice_data/profiles/database.sqlite",
+    "path": "./voice_data/profiles/database.sqlite",
     "backup_enabled": true,
     "backup_interval_hours": 24,
-    "backup_path": "/home/pc/voice_data/profiles/backups"
+    "backup_path": "./voice_data/profiles/backups"
   },
   "session": {
-    "output_folder": "/home/pc/voice_data/sessions",
+    "output_folder": "./voice_data/sessions",
     "summary_interval_minutes": 5,
     "max_segment_duration_seconds": 30,
     "save_audio_cache": false,
     "audio_cache_format": "wav"
   },
   "bridge": {
-    "shared_folder": "/home/pc/voice_data/shared",
+    "shared_folder": "./voice_data/shared",
     "poll_interval_ms": 500,
     "command_timeout_seconds": 30,
     "status_update_interval_seconds": 5
@@ -65,7 +65,7 @@
     },
     "file": {
       "enabled": true,
-      "path": "/home/pc/voice_data/logs/voxmind_{date}.log",
+      "path": "./voice_data/logs/voxmind_{date}.log",
       "rolling_interval": "Day",
       "retained_file_count": 30
     }

@@ -26,12 +26,14 @@ public static class ConfigurationLoader
 
     public static AppConfiguration LoadOrDefault()
     {
+        var env = Environment.GetEnvironmentVariable("VOXMIND_DATA_DIR");
+
         var candidates = new[]
         {
+            env != null ? Path.Combine(env, "config", "config.json") : null,
             Path.Combine(AppContext.BaseDirectory, "voice_data", "config", "config.json"),
-            Path.Combine("/home/pc", "voice_data", "config", "config.json"),
             Path.Combine(Directory.GetCurrentDirectory(), "voice_data", "config", "config.json")
-        };
+        }.Where(p => p != null).Cast<string>().ToArray();
 
         foreach (var path in candidates)
         {

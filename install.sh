@@ -1,11 +1,12 @@
 #!/bin/bash
-# VoxMind - Script d'installation automatisé
+# VoxMind - Script d'installation (100% C#, sans Python)
 # Usage: chmod +x install.sh && ./install.sh
 
 set -e
 
 VOXMIND_DIR="$(cd "$(dirname "$0")" && pwd)"
-VOICE_DATA_DIR="${HOME}/voice_data"
+MODELS_DIR="$VOXMIND_DIR/models"
+VOICE_DATA_DIR="$VOXMIND_DIR/voice_data"
 
 echo "==================================="
 echo "  VoxMind — Installation"
@@ -32,26 +33,25 @@ echo "Installation des prérequis système..."
 if [ "$PKG_MANAGER" = "apt" ]; then
     sudo apt-get update
     sudo apt-get install -y \
-        python3 python3-pip python3-venv \
         portaudio19-dev libportaudio2 libsndfile1 \
         ffmpeg
 elif [ "$PKG_MANAGER" = "pacman" ]; then
-    sudo pacman -Sy --noconfirm python python-pip portaudio ffmpeg
+    sudo pacman -Sy --noconfirm portaudio ffmpeg libsndfile
 elif [ "$PKG_MANAGER" = "dnf" ]; then
-    sudo dnf install -y python3 python3-pip portaudio-devel ffmpeg
+    sudo dnf install -y portaudio-devel ffmpeg libsndfile
 fi
 
-# 3. Vérification .NET 8
+# 3. Vérification .NET 8 SDK
 echo ""
 if ! command -v dotnet &>/dev/null || ! dotnet --version | grep -q "^8\."; then
-    echo "Installation de .NET 8..."
+    echo "Installation de .NET 8 SDK..."
     if [ "$PKG_MANAGER" = "apt" ]; then
         wget -q https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb
         sudo dpkg -i /tmp/packages-microsoft-prod.deb
         sudo apt-get update
         sudo apt-get install -y dotnet-sdk-8.0
     else
-        echo "AVERTISSEMENT: Installer .NET 8 manuellement depuis https://dotnet.microsoft.com/download"
+        echo "AVERTISSEMENT: Installer .NET 8 SDK manuellement depuis https://dotnet.microsoft.com/download"
         echo "Puis relancer ce script."
         exit 1
     fi
@@ -59,77 +59,81 @@ else
     echo ".NET $(dotnet --version) détecté."
 fi
 
-# 4. Environnement Python
-echo ""
-echo "Création de l'environnement Python..."
-cd "$VOXMIND_DIR"
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r python_services/requirements.txt
-echo "Environnement Python configuré."
-
-# 5. Compilation des protos gRPC
-echo ""
-echo "Compilation des fichiers gRPC..."
-cd python_services
-python -m grpc_tools.protoc \
-    -I./protos \
-    --python_out=. \
-    --grpc_python_out=. \
-    protos/speaker.proto
-cd ..
-echo "Fichiers gRPC générés."
-
-# 6. Création de la structure de données
+# 4. Création de la structure de données
 echo ""
 echo "Création de la structure de données..."
-mkdir -p "$VOICE_DATA_DIR"/{profiles/backups,embeddings,sessions,shared,cache/whisper,logs,config}
+mkdir -p "$VOICE_DATA_DIR"/{profiles/backups,sessions,shared,logs,config}
 
+# Copier config.json template si n'existe pas
 if [ ! -f "$VOICE_DATA_DIR/config/config.json" ]; then
-    cp "$VOXMIND_DIR/voice_data/config/config.json" "$VOICE_DATA_DIR/config/config.json"
-    echo "Configuration copiée vers $VOICE_DATA_DIR/config/config.json"
+    if [ -f "$VOXMIND_DIR/voice_data/config/config.json" ]; then
+        cp "$VOXMIND_DIR/voice_data/config/config.json" "$VOICE_DATA_DIR/config/config.json"
+        echo "Configuration copiée vers $VOICE_DATA_DIR/config/config.json"
+    fi
 fi
 
-# 7. Build .NET
+# 5. Téléchargement des modèles ONNX
+echo ""
+echo "Téléchargement des modèles ML..."
+
+# Parakeet TDT (transcription)
+PARAKEET_DIR="$MODELS_DIR/parakeet-tdt-0.6b-v3-int8"
+if [ ! -f "$PARAKEET_DIR/nemo128.onnx" ]; then
+    echo "  Téléchargement Parakeet TDT-0.6b-v3-int8 (~500MB)..."
+    mkdir -p "$PARAKEET_DIR"
+
+    wget -q --show-progress -O "$PARAKEET_DIR/nemo128.onnx" \
+        "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/nemo128.onnx"
+
+    wget -q --show-progress -O "$PARAKEET_DIR/encoder-model.int8.onnx" \
+        "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/encoder-model.int8.onnx"
+
+    wget -q --show-progress -O "$PARAKEET_DIR/decoder_joint-model.int8.onnx" \
+        "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/decoder_joint-model.int8.onnx"
+
+    wget -q --show-progress -O "$PARAKEET_DIR/vocab.txt" \
+        "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/vocab.txt"
+
+    echo "  Parakeet TDT téléchargé."
+else
+    echo "  Parakeet TDT déjà présent."
+fi
+
+# sherpa-onnx 3DSpeaker (speaker embedding)
+SHERPA_MODEL="$MODELS_DIR/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
+if [ ! -f "$SHERPA_MODEL" ]; then
+    echo "  Téléchargement 3DSpeaker embedding model (~280MB)..."
+    mkdir -p "$MODELS_DIR"
+
+    wget -q --show-progress -O "$SHERPA_MODEL" \
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
+
+    echo "  3DSpeaker téléchargé."
+else
+    echo "  3DSpeaker déjà présent."
+fi
+
+# 6. Build .NET
 echo ""
 echo "Build du projet .NET..."
+cd "$VOXMIND_DIR"
 dotnet restore VoxMind.sln
 dotnet build VoxMind.sln -c Release
 echo "Build réussi."
 
-# 8. Téléchargement des modèles
-echo ""
-if [ -n "$HUGGINGFACE_TOKEN" ]; then
-    echo "Téléchargement des modèles ML (Whisper Base + PyAnnote)..."
-    source venv/bin/activate
-    python python_services/download_models.py --whisper base --pyannote --output "$VOICE_DATA_DIR/cache"
-else
-    echo "AVERTISSEMENT: HUGGINGFACE_TOKEN non défini."
-    echo "  → Téléchargement Whisper uniquement (pas PyAnnote)"
-    source venv/bin/activate
-    python python_services/download_models.py --whisper base --output "$VOICE_DATA_DIR/cache"
-    echo ""
-    echo "Pour activer l'identification des locuteurs :"
-    echo "  1. Obtenir un token HF : https://huggingface.co/settings/tokens"
-    echo "  2. Accepter les conditions : https://huggingface.co/pyannote/embedding"
-    echo "  3. Exécuter : export HUGGINGFACE_TOKEN=<token>"
-    echo "  4. Exécuter : python python_services/download_models.py --pyannote"
-fi
-
-# 9. Résumé
+# 7. Résumé
 echo ""
 echo "==================================="
 echo "  Installation terminée !"
 echo "==================================="
 echo ""
+echo "Structure créée :"
+echo "  - $MODELS_DIR/parakeet-tdt-0.6b-v3-int8/"
+echo "  - $MODELS_DIR/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
+echo "  - $VOICE_DATA_DIR/{profiles,sessions,shared,logs,config}"
+echo ""
 echo "Démarrer VoxMind :"
-echo "  # Démarrer le service PyAnnote (dans un terminal séparé)"
-echo "  source venv/bin/activate"
-echo "  python python_services/pyannote_server.py --port 50051"
+echo "  dotnet run --project src/VoxMind.CLI"
 echo ""
-echo "  # Démarrer VoxMind CLI"
-echo "  dotnet run --project src/VoxMind.CLI/VoxMind.CLI.csproj"
-echo ""
-echo "Ou avec Docker :"
-echo "  HUGGINGFACE_TOKEN=<token> docker-compose up"
+echo "Ou avec variable d'environnement pour les données :"
+echo "  VOXMIND_DATA_DIR=/chemin/vers/donnees dotnet run --project src/VoxMind.CLI"

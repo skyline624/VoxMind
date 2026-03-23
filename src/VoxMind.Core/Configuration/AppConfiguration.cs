@@ -11,6 +11,46 @@ public class AppConfiguration
     public LoggingConfig Logging { get; set; } = new();
     public MetricsConfig Metrics { get; set; } = new();
     public RemoteClientsConfig RemoteClients { get; set; } = new();
+
+    /// <summary>
+    /// Gets the base data directory for VoxMind.
+    /// Priority: VOXMIND_DATA_DIR env > ./voice_data (relative to executable or cwd)
+    /// </summary>
+    public static string GetDataDirectory()
+    {
+        // 1. VOXMIND_DATA_DIR env variable
+        var env = Environment.GetEnvironmentVariable("VOXMIND_DATA_DIR");
+        if (!string.IsNullOrEmpty(env))
+            return env;
+
+        // 2. Legacy path for existing users: ~/voice_data
+        var home = Environment.GetEnvironmentVariable("HOME");
+        if (!string.IsNullOrEmpty(home))
+        {
+            var legacyPath = System.IO.Path.Combine(home, "voice_data");
+            if (System.IO.Directory.Exists(legacyPath))
+                return legacyPath;
+        }
+
+        // 3. ./voice_data relative to executable
+        var relativeVoiceData = System.IO.Path.Combine(AppContext.BaseDirectory, "voice_data");
+        if (System.IO.Directory.Exists(relativeVoiceData))
+            return relativeVoiceData;
+
+        // 4. Current directory for dev
+        var cwdVoiceData = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "voice_data");
+        if (System.IO.Directory.Exists(cwdVoiceData))
+            return cwdVoiceData;
+
+        // 5. Default: ./voice_data relative to current directory (will be created)
+        return cwdVoiceData;
+    }
+
+    /// <summary>
+    /// Helper to build a path relative to the data directory.
+    /// </summary>
+    public static string GetDefaultPath(params string[] parts)
+        => System.IO.Path.Combine(GetDataDirectory(), System.IO.Path.Combine(parts));
 }
 
 public class ApplicationConfig
@@ -66,15 +106,15 @@ public class SherpaOnnxConfig
 
 public class DatabaseConfig
 {
-    public string Path { get; set; } = "/home/pc/voice_data/profiles/database.sqlite";
+    public string Path { get; set; } = AppConfiguration.GetDefaultPath("profiles", "database.sqlite");
     public bool BackupEnabled { get; set; } = true;
     public int BackupIntervalHours { get; set; } = 24;
-    public string BackupPath { get; set; } = "/home/pc/voice_data/profiles/backups";
+    public string BackupPath { get; set; } = AppConfiguration.GetDefaultPath("profiles", "backups");
 }
 
 public class SessionConfig
 {
-    public string OutputFolder { get; set; } = "/home/pc/voice_data/sessions";
+    public string OutputFolder { get; set; } = AppConfiguration.GetDefaultPath("sessions");
     public int SummaryIntervalMinutes { get; set; } = 5;
     public int MaxSegmentDurationSeconds { get; set; } = 30;
     public bool SaveAudioCache { get; set; } = false;
@@ -83,7 +123,7 @@ public class SessionConfig
 
 public class BridgeConfig
 {
-    public string SharedFolder { get; set; } = "/home/pc/voice_data/shared";
+    public string SharedFolder { get; set; } = AppConfiguration.GetDefaultPath("shared");
     public int PollIntervalMs { get; set; } = 500;
     public int CommandTimeoutSeconds { get; set; } = 30;
     public int StatusUpdateIntervalSeconds { get; set; } = 5;
@@ -105,7 +145,7 @@ public class ConsoleLoggingConfig
 public class FileLoggingConfig
 {
     public bool Enabled { get; set; } = true;
-    public string Path { get; set; } = "/home/pc/voice_data/logs/voxmind_{date}.log";
+    public string Path { get; set; } = AppConfiguration.GetDefaultPath("logs", "voxmind_{date}.log");
     public string RollingInterval { get; set; } = "Day";
     public int RetainedFileCount { get; set; } = 30;
 }

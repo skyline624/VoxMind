@@ -11,7 +11,7 @@ coverage_report/
 TestResults/
 *.nupkg
 
-# Python
+# Python (obsolète, conservé pour compat)
 __pycache__/
 *.py[cod]
 *.pyo
@@ -26,16 +26,13 @@ build/
 .pytest_cache/
 *.pyc
 
-# gRPC generated Python files (générés automatiquement)
-python_services/*_pb2.py
-python_services/*_pb2_grpc.py
-
-# Modèles ML (trop lourds pour git)
-voice_data/cache/
+# Modèles ONNX (trop lourds pour git)
+models/
 *.pt
 *.bin
 *.gguf
 *.ggml
+*.onnx
 
 # Base de données runtime
 voice_data/profiles/database.sqlite
@@ -50,6 +47,11 @@ voice_data/embeddings/
 
 # Shared (bridge - fichiers runtime)
 voice_data/shared/
+
+# Local config overrides (ne jamais commiter)
+appsettings.local.json
+appsettings.*.local.json
+voice_data/config/config.local.json
 
 # Secrets
 .env
@@ -67,8 +69,7 @@ desktop.ini
 .vscode/settings.json
 *.code-workspace
 
-# Config avec token HF (ne jamais commiter)
-voice_data/config/config.local.json
+# VoxMind
 .vexp
 VoxMind-*
 .claude
