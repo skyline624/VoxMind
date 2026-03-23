@@ -28,6 +28,7 @@ public class SessionManager : ISessionManager
     private Task? _processingTask;
     private Timer? _summaryTimer;
     private bool _disposed;
+    private readonly object _lock = new();
 
     public SessionStatus Status => _status;
     public ListeningSession? CurrentSession => _currentSession;
@@ -288,16 +289,25 @@ public class SessionManager : ISessionManager
         });
     }
 
-    private void GenerateIntermediateSummary()
+    private async void GenerateIntermediateSummary()
     {
         if (_currentSession is null || !_currentSegments.Any()) return;
         _logger.LogInformation("Génération du résumé intermédiaire...");
-        // Résumé intermédiaire asynchrone en arrière-plan, non bloquant
-        _ = Task.Run(async () =>
+        try
         {
-            var summary = await _summaryGenerator.GenerateAsync(_currentSession, _currentSegments.ToList());
-            _currentSession.Summary = summary;
-        });
+            var summary = await _summaryGenerator.GenerateAsync(
+                _currentSession,
+                _currentSegments.ToList());
+            lock (_lock)
+            {
+                _currentSession.Summary = summary;
+            }
+            _logger.LogInformation("Résumé intermédiaire généré pour session {Id}", _currentSession.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Erreur lors de la génération du résumé intermédiaire");
+        }
     }
 
     private async Task SaveSessionJsonAsync(ListeningSession session, List<SessionSegment> segments)

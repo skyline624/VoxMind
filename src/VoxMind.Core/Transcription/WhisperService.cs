@@ -104,7 +104,7 @@ public class WhisperService : ITranscriptionService
             throw new InvalidOperationException("Le modèle Whisper n'est pas chargé. Appeler LoadModelAsync().");
 
         // Sauvegarder dans un fichier temporaire WAV pour Whisper.net
-        var tmpFile = Path.GetTempFileName() + ".wav";
+        var tmpFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.wav");
         try
         {
             // audioData est attendu en format WAV PCM 16kHz mono

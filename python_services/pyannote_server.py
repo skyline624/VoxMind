@@ -45,6 +45,7 @@ class SpeakerRecognitionServicer(speaker_pb2_grpc.SpeakerRecognitionServicer):
         self.models_path = models_path
         self.hf_token = hf_token or os.environ.get("HUGGINGFACE_TOKEN")
         self._embedding_model = None
+        self._inference = None
         self._load_models()
 
     def _load_models(self):
@@ -82,6 +83,11 @@ class SpeakerRecognitionServicer(speaker_pb2_grpc.SpeakerRecognitionServicer):
             else:
                 logger.info("Modèle PyAnnote chargé sur CPU.")
 
+            # Créer l'instance Inference une seule fois (réutilisée à chaque appel)
+            from pyannote.audio import Inference
+            self._inference = Inference(self._embedding_model, window="whole")
+            logger.info("Inference PyAnnote initialisée.")
+
         except ImportError:
             logger.error("pyannote.audio non installé. Exécuter: pip install pyannote.audio")
             raise
@@ -117,11 +123,9 @@ class SpeakerRecognitionServicer(speaker_pb2_grpc.SpeakerRecognitionServicer):
             if torch.cuda.is_available():
                 waveform_tensor = waveform_tensor.cuda()
 
-            # Extraire l'embedding
+            # Extraire l'embedding (réutilise self._inference créé au démarrage)
             with torch.no_grad():
-                from pyannote.audio import Inference
-                inference = Inference(self._embedding_model, window="whole")
-                embedding = inference({"waveform": waveform_tensor, "sample_rate": sample_rate})
+                embedding = self._inference({"waveform": waveform_tensor, "sample_rate": sample_rate})
 
             if hasattr(embedding, "data"):
                 emb_array = embedding.data.flatten()

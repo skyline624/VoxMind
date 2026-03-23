@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using VoxMind.Core.Session;
 using VoxMind.Core.Transcription;
@@ -12,6 +13,7 @@ public class FileBridge : IExternalBridge
     private readonly int _statusUpdateIntervalSeconds;
     private readonly ISessionManager _sessionManager;
     private readonly ILogger<FileBridge> _logger;
+    private readonly IHostApplicationLifetime? _lifetime;
 
     private readonly string _commandsFile;
     private readonly string _statusFile;
@@ -33,12 +35,14 @@ public class FileBridge : IExternalBridge
         string sharedFolder,
         ISessionManager sessionManager,
         ILogger<FileBridge> logger,
+        IHostApplicationLifetime? lifetime = null,
         int pollIntervalMs = 500,
         int statusUpdateIntervalSeconds = 5)
     {
         _sharedFolder = sharedFolder;
         _sessionManager = sessionManager;
         _logger = logger;
+        _lifetime = lifetime;
         _pollIntervalMs = pollIntervalMs;
         _statusUpdateIntervalSeconds = statusUpdateIntervalSeconds;
 
@@ -71,16 +75,16 @@ public class FileBridge : IExternalBridge
         await WriteJsonSafeAsync(_statusFile, status);
     }
 
-    private void PublishStatusInternal()
+    private async void PublishStatusInternal()
     {
         try
         {
             var status = BuildCurrentStatus();
-            WriteJsonSafeAsync(_statusFile, status).GetAwaiter().GetResult();
+            await WriteJsonSafeAsync(_statusFile, status);
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Erreur lors de la publication du statut");
+            _logger.LogWarning(ex, "Impossible de publier le statut");
         }
     }
 
@@ -150,7 +154,7 @@ public class FileBridge : IExternalBridge
                 case CommandType.Shutdown:
                     response.Data = new { message = "VoxMind s'arrête..." };
                     await WriteJsonSafeAsync(_statusFile, response);
-                    Environment.Exit(0);
+                    _lifetime?.StopApplication();
                     break;
 
                 default:

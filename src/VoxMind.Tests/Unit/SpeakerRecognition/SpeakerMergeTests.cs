@@ -107,12 +107,38 @@ public class SpeakerMergeTests : IDisposable
         Assert.False(result.IsIdentified);
     }
 
+    [Fact]
+    public async Task EmbeddingCache_ConcurrentReads_DoesNotThrow()
+    {
+        // Arrange — populer le cache séquentiellement (EF Core DbContext non thread-safe)
+        var profile = await _service.EnrollSpeakerAsync("Concurrent", GenerateEmbedding(), 0.9f);
+        for (int i = 0; i < 5; i++)
+            await _service.AddEmbeddingToProfileAsync(profile.Id, GenerateEmbeddingRandom(), 0.8f);
+
+        // Act — 30 lectures simultanées sur le cache (scénario réel : pipeline audio continu)
+        var tasks = Enumerable.Range(0, 30)
+            .Select(_ => _service.IdentifyAsync(GenerateEmbeddingRandom()));
+
+        var ex = await Record.ExceptionAsync(() => Task.WhenAll(tasks));
+        Assert.Null(ex);
+    }
+
     private static float[] GenerateEmbedding()
     {
         var rng = new Random(42);
         var emb = new float[512];
         float norm = 0;
         for (int i = 0; i < 512; i++) { emb[i] = (float)rng.NextDouble(); norm += emb[i] * emb[i]; }
+        norm = MathF.Sqrt(norm);
+        for (int i = 0; i < 512; i++) emb[i] /= norm;
+        return emb;
+    }
+
+    private static float[] GenerateEmbeddingRandom()
+    {
+        var emb = new float[512];
+        float norm = 0;
+        for (int i = 0; i < 512; i++) { emb[i] = (float)Random.Shared.NextDouble(); norm += emb[i] * emb[i]; }
         norm = MathF.Sqrt(norm);
         for (int i = 0; i < 512; i++) emb[i] /= norm;
         return emb;

@@ -20,6 +20,14 @@ public class SummaryGenerator : ISummaryGenerator
         "action:", "todo:", "je me charge", "je vais faire"
     };
 
+    private static readonly string[] KeyMomentPatterns =
+    {
+        "bonjour", "salut", "bonsoir",
+        "merci", "je vous remercie",
+        "à plus", "au revoir", "à bientôt",
+        "j'ai une question", "question:", "pour résumer"
+    };
+
     public SummaryGenerator(ILogger<SummaryGenerator> logger)
     {
         _logger = logger;
@@ -91,6 +99,19 @@ public class SummaryGenerator : ISummaryGenerator
             var representative = blockSegments.OrderByDescending(s => s.Text.Length).First();
             var timeLabel = (startTime + TimeSpan.FromSeconds(representative.StartSeconds)).ToString("HH:mm");
             moments.Add($"{timeLabel} - {representative.Text.Truncate(100)}");
+        }
+
+        // Moments clés par pattern : salutations, adieux, questions
+        foreach (var seg in segments)
+        {
+            var lower = seg.Text.ToLowerInvariant();
+            if (KeyMomentPatterns.Any(p => lower.Contains(p)))
+            {
+                var timeLabel = (startTime + TimeSpan.FromSeconds(seg.StartSeconds)).ToString("HH:mm");
+                var entry = $"{timeLabel} ⚑ {seg.Text.Truncate(100)}";
+                if (!moments.Contains(entry))
+                    moments.Add(entry);
+            }
         }
 
         return moments;

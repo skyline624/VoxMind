@@ -15,6 +15,7 @@ public class SpeakerIdentificationService : ISpeakerIdentificationService
 
     // Cache mémoire : profileId → liste de vecteurs d'embedding
     private readonly Dictionary<Guid, List<float[]>> _embeddingCache = new();
+    private readonly object _cacheLock = new();
     private bool _disposed;
 
     public SpeakerIdentificationService(
@@ -32,7 +33,7 @@ public class SpeakerIdentificationService : ISpeakerIdentificationService
         Directory.CreateDirectory(embeddingsDir);
     }
 
-    /// <summary>Charge tous les embeddings actifs en mémoire au démarrage.</summary>
+    /// <summary>Charge tous les embeddings actifs en mémoire au démarrage (chargement parallèle, max 4 lectures simultanées).</summary>
     public async Task InitializeAsync()
     {
         var embeddings = await _db.SpeakerEmbeddings
@@ -40,32 +41,49 @@ public class SpeakerIdentificationService : ISpeakerIdentificationService
             .Where(e => e.Profile.IsActive)
             .ToListAsync();
 
-        foreach (var emb in embeddings)
+        var semaphore = new SemaphoreSlim(4);
+        var tasks = embeddings.Select(async emb =>
         {
-            if (!File.Exists(emb.FilePath)) continue;
-            var bytes = await File.ReadAllBytesAsync(emb.FilePath);
-            var vector = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(bytes).ToArray();
-
-            if (!_embeddingCache.TryGetValue(emb.ProfileId, out var list))
+            await semaphore.WaitAsync();
+            try
             {
-                list = new List<float[]>();
-                _embeddingCache[emb.ProfileId] = list;
+                if (!File.Exists(emb.FilePath)) return;
+                var bytes = await File.ReadAllBytesAsync(emb.FilePath);
+                var vector = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(bytes).ToArray();
+                lock (_cacheLock)
+                {
+                    if (!_embeddingCache.TryGetValue(emb.ProfileId, out var list))
+                    {
+                        list = new List<float[]>();
+                        _embeddingCache[emb.ProfileId] = list;
+                    }
+                    list.Add(vector);
+                }
             }
-            list.Add(vector);
-        }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
 
+        await Task.WhenAll(tasks);
         _logger.LogInformation("Cache d'embeddings initialisé : {Count} profils.", _embeddingCache.Count);
     }
 
     public async Task<SpeakerIdentificationResult> IdentifyAsync(float[] embedding)
     {
-        if (_embeddingCache.Count == 0)
-            return SpeakerIdentificationResult.Unknown(_confidenceThreshold);
+        List<KeyValuePair<Guid, List<float[]>>> snapshot;
+        lock (_cacheLock)
+        {
+            if (_embeddingCache.Count == 0)
+                return SpeakerIdentificationResult.Unknown(_confidenceThreshold);
+            snapshot = _embeddingCache.ToList();
+        }
 
         float bestSimilarity = 0f;
         Guid? bestProfileId = null;
 
-        foreach (var (profileId, vectors) in _embeddingCache)
+        foreach (var (profileId, vectors) in snapshot)
         {
             foreach (var storedVector in vectors)
             {
@@ -150,9 +168,12 @@ public class SpeakerIdentificationService : ISpeakerIdentificationService
         });
         await _db.SaveChangesAsync();
 
-        if (!_embeddingCache.ContainsKey(profileId))
-            _embeddingCache[profileId] = new List<float[]>();
-        _embeddingCache[profileId].Add(embedding);
+        lock (_cacheLock)
+        {
+            if (!_embeddingCache.ContainsKey(profileId))
+                _embeddingCache[profileId] = new List<float[]>();
+            _embeddingCache[profileId].Add(embedding);
+        }
     }
 
     public async Task<SpeakerProfile?> GetProfileAsync(Guid profileId)

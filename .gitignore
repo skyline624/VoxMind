@@ -69,3 +69,5 @@ desktop.ini
 
 # Config avec token HF (ne jamais commiter)
 voice_data/config/config.local.json
+.vexp
+VoxMind-*

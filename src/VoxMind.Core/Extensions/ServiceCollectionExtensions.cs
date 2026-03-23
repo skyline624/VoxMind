@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using VoxMind.Core.Audio;
 using VoxMind.Core.Bridge;
 using VoxMind.Core.Configuration;
@@ -68,6 +69,7 @@ public static class ServiceCollectionExtensions
                 config.Bridge.SharedFolder,
                 sp.GetRequiredService<ISessionManager>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<FileBridge>>(),
+                sp.GetService<IHostApplicationLifetime>(),
                 config.Bridge.PollIntervalMs,
                 config.Bridge.StatusUpdateIntervalSeconds
             )

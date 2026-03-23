@@ -127,6 +127,25 @@ public class SessionManagerTests : IDisposable
         await _manager.StopSessionAsync(); // Nettoyage
     }
 
+    [Fact]
+    public async Task StartSession_SessionRemainsValidWhileListening()
+    {
+        // Arrange — le timer résumé intermédiaire est à 5 min, ne se déclenche pas pendant ce test
+        // Ce test vérifie que la session reste valide pendant toute la durée d'écoute
+
+        // Act
+        var session = await _manager.StartSessionAsync("session-robustesse");
+        await Task.Delay(100); // simule une courte période d'écoute
+
+        // Assert — la session est toujours en cours et n'a pas crashé
+        Assert.NotNull(session);
+        Assert.Equal(SessionStatus.Listening, _manager.Status);
+        Assert.Equal("session-robustesse", session.Name);
+        Assert.Null(session.EndedAt); // pas encore terminée
+
+        await _manager.StopSessionAsync(); // Nettoyage
+    }
+
     public void Dispose()
     {
         _manager.Dispose();
