@@ -40,13 +40,16 @@
     <!-- Décodage multi-formats (MP3, WAV, OGG, Opus, WebM) via FFmpeg CLI -->
     <PackageReference Include="FFMpegCore" Version="5.1.0" />
 
+    <!-- ONNX Runtime — requis pour OnnxSessionOptionsFactory (ROCm/CUDA EPs)    -->
+    <!-- v1.18.0 : dernière version avec build ROCm officiel sur GitHub releases  -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.18.0" />
+
     <!-- Transcription Whisper (whisper.cpp via GGML, 100% local) -->
-    <PackageReference Include="Whisper.net" Version="1.7.1" />
-    <PackageReference Include="Whisper.net.Runtime" Version="1.7.1" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../VoxMind.Parakeet/VoxMind.Parakeet.csproj" />
   </ItemGroup>
+
 
 </Project>

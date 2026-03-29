@@ -21,9 +21,8 @@ public sealed class AudioPreprocessor : IDisposable
     private readonly string _lenOutputName;
     private readonly bool _lengthIsInt64;
 
-    public AudioPreprocessor(string modelPath)
+    public AudioPreprocessor(string modelPath, SessionOptions opts)
     {
-        var opts = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
         _session = new InferenceSession(modelPath, opts);
 
         var inputNames = _session.InputMetadata.Keys.ToList();

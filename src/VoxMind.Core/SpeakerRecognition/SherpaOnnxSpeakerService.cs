@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using SherpaOnnx;
 using VoxMind.Core.Configuration;
 using VoxMind.Core.Database;
+using Vad = VoxMind.Core.Vad;
 
 namespace VoxMind.Core.SpeakerRecognition;
 
@@ -19,6 +20,7 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
     private readonly VoxMindDbContext _db;
     private readonly ILogger<SherpaOnnxSpeakerService> _logger;
     private readonly float _confidenceThreshold;
+    private readonly float _clusteringThreshold;
     private readonly string _embeddingsDir;
     private readonly SpeakerEmbeddingExtractor? _extractor;
 
@@ -35,6 +37,7 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
         _db = db;
         _logger = logger;
         _confidenceThreshold = config.ConfidenceThreshold;
+        _clusteringThreshold = config.SherpaOnnx.ClusteringThreshold;
         _embeddingsDir = embeddingsDir;
         Directory.CreateDirectory(embeddingsDir);
 
@@ -303,6 +306,113 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
     }
 
     public Task<bool> CheckHealthAsync() => Task.FromResult(_extractor is not null);
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyDictionary<int, SpeakerLabel>> DiarizeSegmentsAsync(
+        IReadOnlyList<Vad.VadSegment> segments,
+        CancellationToken ct = default)
+    {
+        var result = new Dictionary<int, SpeakerLabel>();
+
+        if (_extractor is null || segments.Count == 0)
+            return result;
+
+        // ── 1. Extraire l'embedding de chaque segment ──────────────────────────
+        // Ignorer les segments trop courts (< 0.75 s = 12 000 samples @ 16kHz) :
+        // les embeddings sont peu fiables sur des fragments aussi courts.
+        const int MinSamples = 12_000;
+
+        var embeddings = new (int Index, float[] Embedding)[segments.Count];
+        for (int i = 0; i < segments.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (segments[i].Samples.Length < MinSamples)
+            {
+                embeddings[i] = (i, Array.Empty<float>());
+                continue;
+            }
+            try
+            {
+                var stream = _extractor.CreateStream();
+                stream.AcceptWaveform(16000, segments[i].Samples);
+                stream.InputFinished();
+                embeddings[i] = (i, _extractor.Compute(stream));
+            }
+            catch
+            {
+                embeddings[i] = (i, Array.Empty<float>());
+            }
+        }
+
+        // ── 2. Clustering greedy par similarité cosinus ─────────────────────────
+        // Chaque cluster = liste d'indices + centroïde courant
+        var clusters = new List<(List<int> Indices, float[] Centroid)>();
+        float clusterThreshold = _clusteringThreshold;
+
+        foreach (var (idx, emb) in embeddings)
+        {
+            if (emb.Length == 0) continue;
+
+            float bestSim = 0f;
+            int bestCluster = -1;
+            for (int c = 0; c < clusters.Count; c++)
+            {
+                float sim = CosineSimilarity(emb, clusters[c].Centroid);
+                if (sim > bestSim) { bestSim = sim; bestCluster = c; }
+            }
+
+            if (bestSim >= clusterThreshold && bestCluster >= 0)
+            {
+                clusters[bestCluster].Indices.Add(idx);
+                // Mise à jour du centroïde par moyenne glissante
+                var prev = clusters[bestCluster].Centroid;
+                int count = clusters[bestCluster].Indices.Count;
+                var newCentroid = new float[prev.Length];
+                for (int k = 0; k < prev.Length; k++)
+                    newCentroid[k] = (prev[k] * (count - 1) + emb[k]) / count;
+                clusters[bestCluster] = (clusters[bestCluster].Indices, newCentroid);
+            }
+            else
+            {
+                clusters.Add((new List<int> { idx }, emb));
+            }
+        }
+
+        // ── 3. Matcher chaque cluster contre les profils connus ou créer un nouveau ──
+        int autoCount = await _db.SpeakerProfiles.CountAsync(p => p.IsActive, ct);
+
+        for (int c = 0; c < clusters.Count; c++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var centroid = clusters[c].Centroid;
+            var identification = await IdentifyAsync(centroid);
+
+            SpeakerLabel label;
+            if (identification.IsIdentified && identification.ProfileId.HasValue)
+            {
+                label = new SpeakerLabel(identification.ProfileId, identification.SpeakerName ?? $"Locuteur {c + 1}");
+                await UpdateLastSeenAsync(identification.ProfileId.Value);
+            }
+            else
+            {
+                // Nouveau locuteur → création automatique de profil
+                autoCount++;
+                var name = $"Locuteur {autoCount}";
+                var profile = await EnrollSpeakerAsync(name, centroid, identification.Confidence,
+                    audioDurationSeconds: (int)clusters[c].Indices
+                        .Sum(i => segments[i].EndSeconds - segments[i].StartSeconds));
+                label = new SpeakerLabel(profile.Id, name);
+                _logger.LogInformation("Diarisation : nouveau profil auto '{Name}' créé ({Count} segments).",
+                    name, clusters[c].Indices.Count);
+            }
+
+            foreach (var idx in clusters[c].Indices)
+                result[idx] = label;
+        }
+
+        return result;
+    }
 
     private static SpeakerProfile MapToProfile(SpeakerProfileEntity e) => new()
     {

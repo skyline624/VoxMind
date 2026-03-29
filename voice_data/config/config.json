@@ -38,15 +38,15 @@
     "transcription": {
       "engine": "parakeet",
       "parakeet_model_path": "/home/pc/devellopement/VoxMind/models/parakeet-tdt-0.6b-v3-int8",
-      "whisper_model_path": "/home/pc/devellopement/VoxMind/models/whisper-medium.bin",
       "default_model": "parakeet"
     },
     "speaker_recognition": {
       "enabled": true,
       "confidence_threshold": 0.7,
       "sherpa_onnx": {
+        "embedding_model_path": "/home/pc/devellopement/VoxMind/models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
         "num_threads": 4,
-        "clustering_threshold": 0.5
+        "clustering_threshold": 0.45
       }
     }
   },

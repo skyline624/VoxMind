@@ -16,15 +16,16 @@ public record TranscriptionResponse(
 public record SpeakerResult(
     [property: JsonPropertyName("speaker_id")]  string SpeakerId,
     [property: JsonPropertyName("name")]        string Name,
-    [property: JsonPropertyName("confidence")]  float Confidence,
     [property: JsonPropertyName("segments")]    IReadOnlyList<SegmentTimespan> Segments
 );
 
 public record SegmentResult(
-    [property: JsonPropertyName("text")]       string Text,
-    [property: JsonPropertyName("start")]      double Start,
-    [property: JsonPropertyName("end")]        double End,
-    [property: JsonPropertyName("confidence")] float Confidence
+    [property: JsonPropertyName("text")]        string Text,
+    [property: JsonPropertyName("start")]       double Start,
+    [property: JsonPropertyName("end")]         double End,
+    [property: JsonPropertyName("confidence")]  float Confidence,
+    [property: JsonPropertyName("speaker_id")]  string? SpeakerId,
+    [property: JsonPropertyName("speaker")]     string? SpeakerName
 );
 
 public record SegmentTimespan(
@@ -34,27 +35,27 @@ public record SegmentTimespan(
 
 public static class TranscriptionMapper
 {
-    public static TranscriptionResponse Map(
-        TranscriptionResult result,
-        SpeakerIdentificationResult? speaker = null)
+    public static TranscriptionResponse Map(TranscriptionResult result)
     {
         var segments = result.Segments.Select(s => new SegmentResult(
             s.Text,
             s.Start.TotalSeconds,
             s.End.TotalSeconds,
-            s.Confidence
+            s.Confidence,
+            s.SpeakerId?.ToString(),
+            s.SpeakerName
         )).ToList();
 
-        var speakers = new List<SpeakerResult>();
-        if (speaker is { IsIdentified: true })
-        {
-            speakers.Add(new SpeakerResult(
-                speaker.ProfileId?.ToString() ?? "unknown",
-                speaker.SpeakerName ?? "unknown",
-                speaker.Confidence,
-                segments.Select(s => new SegmentTimespan(s.Start, s.End)).ToList()
-            ));
-        }
+        // Regrouper les segments par locuteur pour construire la liste speakers
+        var speakers = segments
+            .Where(s => s.SpeakerId != null)
+            .GroupBy(s => s.SpeakerId!)
+            .Select(g => new SpeakerResult(
+                g.Key!,
+                g.First().SpeakerName ?? g.Key!,
+                g.Select(s => new SegmentTimespan(s.Start, s.End)).ToList()
+            ))
+            .ToList();
 
         return new TranscriptionResponse(
             result.Text,
@@ -64,4 +65,8 @@ public static class TranscriptionMapper
             segments
         );
     }
+
+    // Surcharge de compatibilité avec l'ancienne signature (speaker global ignoré)
+    public static TranscriptionResponse Map(TranscriptionResult result, SpeakerIdentificationResult? _ = null)
+        => Map(result);
 }

@@ -24,7 +24,7 @@ public static class StatusEndpoints
         ISessionManager sessionManager,
         AppConfiguration config)
     {
-        var backend = ComputeBackendDetector.DetectBestAvailable().ToString().ToLowerInvariant();
+        var backend = "cpu";
         var models = registry.ListAll()
             .Select(e => new ModelStatusEntry(e.Name, e.Info.IsLoaded, e.Info.Backend.ToString().ToLowerInvariant()))
             .ToList();

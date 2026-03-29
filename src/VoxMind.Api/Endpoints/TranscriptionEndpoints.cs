@@ -22,7 +22,8 @@ public static class TranscriptionEndpoints
             .WithDescription(
                 "Compatible OpenAI /v1/audio/transcriptions. " +
                 "Accepte MP3, WAV, OGG, Opus, WebM via FFmpeg. " +
-                "Paramètre ?model=parakeet|whisper|cohere.");
+                "Paramètre ?model=parakeet|cohere (défaut : parakeet). " +
+                "La diarisation automatique crée les profils locuteurs à la volée.");
 
         return app;
     }
@@ -50,6 +51,7 @@ public static class TranscriptionEndpoints
 
             // Sélectionner le moteur de transcription
             var engine = registry.Get(model);
+            logger.LogInformation("Moteur sélectionné : {Engine} (demandé: {Model})", engine.Info.ModelName, model ?? "défaut");
 
             if (!engine.Info.IsLoaded)
             {
@@ -58,22 +60,33 @@ public static class TranscriptionEndpoints
                     statusCode: 503);
             }
 
-            // Transcription
+            // ── Transcription ────────────────────────────────────────────────────
             var transcription = await engine.TranscribeFileAsync(tempPath, ct);
 
-            // Identification du locuteur (best-effort, ne bloque pas si échoue)
-            SpeakerIdentificationResult? speakerResult = null;
-            try
+            // ── Diarisation automatique (best-effort) ────────────────────────────
+            if (transcription.VadSegments is { Count: > 0 })
             {
-                var audioBytes = await File.ReadAllBytesAsync(tempPath, ct);
-                speakerResult = await speakerSvc.IdentifyFromAudioAsync(audioBytes, ct);
-            }
-            catch (Exception ex)
-            {
-                logger.LogDebug(ex, "Speaker identification ignorée (non bloquant).");
+                try
+                {
+                    var speakerMap = await speakerSvc.DiarizeSegmentsAsync(transcription.VadSegments, ct);
+                    foreach (var seg in transcription.Segments)
+                    {
+                        if (speakerMap.TryGetValue(seg.Id, out var label))
+                        {
+                            seg.SpeakerId   = label.ProfileId;
+                            seg.SpeakerName = label.Name;
+                        }
+                    }
+                    logger.LogInformation("Diarisation : {Count} locuteur(s) détecté(s).",
+                        speakerMap.Values.DistinctBy(l => l.ProfileId).Count());
+                }
+                catch (Exception ex)
+                {
+                    logger.LogDebug(ex, "Diarisation ignorée (non bloquant).");
+                }
             }
 
-            return Results.Ok(TranscriptionMapper.Map(transcription, speakerResult));
+            return Results.Ok(TranscriptionMapper.Map(transcription));
         }
         catch (NotSupportedException ex)
         {

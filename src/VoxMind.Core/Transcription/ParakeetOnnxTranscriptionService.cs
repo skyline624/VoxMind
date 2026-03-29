@@ -2,6 +2,7 @@ using System.Text;
 using FFMpegCore;
 using FFMpegCore.Pipes;
 using Microsoft.Extensions.Logging;
+using Microsoft.ML.OnnxRuntime;
 using VoxMind.Core.Vad;
 using VoxMind.Parakeet;
 
@@ -21,6 +22,7 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
 {
     private readonly ILogger<ParakeetOnnxTranscriptionService> _logger;
     private readonly IVadService _vadService;
+    private readonly string _modelDir;
     private ModelInfo _info;
     private AudioPreprocessor? _preprocessor;
     private ParakeetEncoder? _encoder;
@@ -37,6 +39,7 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
     {
         _logger = logger;
         _vadService = vadService;
+        _modelDir = modelDir;
         _info = new ModelInfo
         {
             ModelName = "parakeet-tdt-0.6b-v3-int8",
@@ -51,24 +54,43 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
             return;
         }
 
-        TryLoadModels(modelDir);
+        TryLoadModels();
     }
 
-    private void TryLoadModels(string modelDir)
+    private void TryLoadModels()
     {
         try
         {
-            _tokenDecoder = new TokenDecoder(Path.Combine(modelDir, "vocab.txt"));
-            _preprocessor = new AudioPreprocessor(Path.Combine(modelDir, "nemo128.onnx"));
-            _encoder = new ParakeetEncoder(Path.Combine(modelDir, "encoder-model.int8.onnx"));
-            _decoder = new ParakeetDecoderJoint(Path.Combine(modelDir, "decoder_joint-model.int8.onnx"), _tokenDecoder);
+            DisposeComponents();
 
-            _info.IsLoaded = true;
-            _logger.LogInformation("Parakeet ONNX chargé depuis {Path}. Vocab: {Vocab} tokens.", modelDir, _tokenDecoder.VocabSize);
+            var opts = new SessionOptions
+            {
+                GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL
+            };
+
+            _tokenDecoder = new TokenDecoder(Path.Combine(_modelDir, "vocab.txt"));
+            _preprocessor = new AudioPreprocessor(Path.Combine(_modelDir, "nemo128.onnx"), opts);
+            _encoder      = new ParakeetEncoder(Path.Combine(_modelDir, "encoder-model.int8.onnx"), opts);
+            _decoder      = new ParakeetDecoderJoint(
+                                Path.Combine(_modelDir, "decoder_joint-model.int8.onnx"),
+                                _tokenDecoder,
+                                opts);
+
+            _info = new ModelInfo
+            {
+                ModelName = _info.ModelName,
+                Size      = _info.Size,
+                Backend   = ComputeBackend.CPU,
+                IsLoaded  = true
+            };
+
+            _logger.LogInformation(
+                "Parakeet ONNX chargé depuis {Path} (CPU). Vocab: {Vocab} tokens.",
+                _modelDir, _tokenDecoder.VocabSize);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Impossible de charger les modèles Parakeet ONNX depuis {Path}.", modelDir);
+            _logger.LogWarning(ex, "Impossible de charger les modèles Parakeet ONNX depuis {Path}.", _modelDir);
         }
     }
 
@@ -162,6 +184,7 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
             Language = "en",
             Confidence = resultSegments.Count > 0
                 ? resultSegments.Average(s => s.Confidence) : 0f,
+            VadSegments = segments,
         };
     }
 
@@ -272,24 +295,34 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
 
     public Task<string> DetectLanguageAsync(byte[] audioData) => Task.FromResult("en");
 
-    public Task LoadModelAsync(ModelSize size, ComputeBackend backend = ComputeBackend.Auto)
+    public Task LoadModelAsync(ModelSize size)
     {
         _info = new ModelInfo
         {
             ModelName = _info.ModelName,
-            Size = size,
-            Backend = backend == ComputeBackend.Auto ? ComputeBackend.CPU : backend,
-            IsLoaded = _info.IsLoaded
+            Size      = size,
+            Backend   = ComputeBackend.CPU,
+            IsLoaded  = false
         };
+        TryLoadModels();
         return Task.CompletedTask;
+    }
+
+    private void DisposeComponents()
+    {
+        _preprocessor?.Dispose();
+        _encoder?.Dispose();
+        _decoder?.Dispose();
+        _preprocessor = null;
+        _encoder = null;
+        _decoder = null;
+        _tokenDecoder = null;
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        _preprocessor?.Dispose();
-        _encoder?.Dispose();
-        _decoder?.Dispose();
+        DisposeComponents();
     }
 }

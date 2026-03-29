@@ -16,7 +16,7 @@ public class CohereTranscriptionService : ITranscriptionService
     {
         ModelName = "cohere",
         Size = ModelSize.Large,
-        Backend = ComputeBackend.Auto,
+        Backend = ComputeBackend.CPU,
         IsLoaded = false
     };
 
@@ -41,7 +41,7 @@ public class CohereTranscriptionService : ITranscriptionService
     public Task<string> DetectLanguageAsync(byte[] audioData)
         => Task.FromResult("unavailable");
 
-    public Task LoadModelAsync(ModelSize size, ComputeBackend backend = ComputeBackend.Auto)
+    public Task LoadModelAsync(ModelSize size)
         => Task.CompletedTask;
 
     public void Dispose() { }

@@ -1,7 +1,21 @@
+using VoxMind.Core.Vad;
+
 namespace VoxMind.Core.SpeakerRecognition;
+
+/// <summary>Résultat de diarisation pour un segment : locuteur identifié ou auto-créé.</summary>
+public record SpeakerLabel(Guid? ProfileId, string Name);
 
 public interface ISpeakerIdentificationService : IDisposable
 {
+    /// <summary>
+    /// Diarise une liste de segments VAD : extrait les empreintes, regroupe par locuteur
+    /// (clustering greedy cosinus), matche contre les profils connus et crée automatiquement
+    /// les profils inconnus ("Locuteur N").
+    /// Retourne un dictionnaire index de segment → locuteur.
+    /// </summary>
+    Task<IReadOnlyDictionary<int, SpeakerLabel>> DiarizeSegmentsAsync(
+        IReadOnlyList<VadSegment> segments,
+        CancellationToken ct = default);
     /// <summary>Enroller un nouveau locuteur avec une empreinte vocale</summary>
     Task<SpeakerProfile> EnrollSpeakerAsync(string name, float[] embedding, float initialConfidence, int audioDurationSeconds = 0);
 

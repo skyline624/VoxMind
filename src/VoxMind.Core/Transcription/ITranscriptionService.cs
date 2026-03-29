@@ -15,5 +15,5 @@ public interface ITranscriptionService : IDisposable
     ModelInfo Info { get; }
 
     /// <summary>Charger un nouveau modèle</summary>
-    Task LoadModelAsync(ModelSize size, ComputeBackend backend = ComputeBackend.Auto);
+    Task LoadModelAsync(ModelSize size);
 }

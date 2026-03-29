@@ -21,9 +21,12 @@ public sealed class TokenDecoder
 
     public TokenDecoder(string vocabPath)
     {
+        // Format vocab.txt : "<token> <id>" par ligne, lignes ordonnées par ID croissant.
+        // On extrait uniquement la partie token (tout ce qui précède le dernier espace).
         _vocab = File.ReadAllLines(vocabPath)
             .Select(l => l.Trim())
             .Where(l => !string.IsNullOrEmpty(l))
+            .Select(static l => { var i = l.LastIndexOf(' '); return i > 0 ? l[..i] : l; })
             .ToArray();
 
         if (_vocab.Length == 0)

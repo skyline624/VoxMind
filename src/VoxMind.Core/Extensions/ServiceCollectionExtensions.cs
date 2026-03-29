@@ -50,28 +50,20 @@ public static class ServiceCollectionExtensions
             )
         );
 
-        // Moteur Whisper (Whisper.net, GGML local)
-        services.AddSingleton<WhisperNetTranscriptionService>(sp =>
-            new WhisperNetTranscriptionService(
-                config.Ml.Transcription.WhisperModelPath,
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<WhisperNetTranscriptionService>>()
-            )
-        );
-
         // Moteur Cohere (stub — requiert service Python gRPC)
+        // Pattern à dupliquer pour ajouter un nouveau moteur de transcription.
         services.AddSingleton<CohereTranscriptionService>(sp =>
             new CohereTranscriptionService(
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CohereTranscriptionService>>()
             )
         );
 
-        // Registre multi-engine
+        // Registre multi-engine : ajouter une entrée ici pour enregistrer un nouveau moteur.
         services.AddSingleton<TranscriptionEngineRegistry>(sp =>
             new TranscriptionEngineRegistry(
                 new Dictionary<string, ITranscriptionService>
                 {
                     ["parakeet"] = sp.GetRequiredService<ITranscriptionService>(),
-                    ["whisper"]  = sp.GetRequiredService<WhisperNetTranscriptionService>(),
                     ["cohere"]   = sp.GetRequiredService<CohereTranscriptionService>(),
                 },
                 defaultModel: config.Ml.Transcription.DefaultModel

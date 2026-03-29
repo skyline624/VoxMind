@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using VoxMind.Core.Vad;
+
 namespace VoxMind.Core.Transcription;
 
 public class TranscriptionResult
@@ -8,6 +11,10 @@ public class TranscriptionResult
     public TimeSpan Duration { get; set; }
     public List<TranscriptionSegment> Segments { get; set; } = new();
     public DateTime ProcessedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Segments VAD bruts (samples PCM) — non sérialisés, utilisés pour la diarisation.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<VadSegment>? VadSegments { get; set; }
 }
 
 public class TranscriptionSegment
@@ -18,6 +25,8 @@ public class TranscriptionSegment
     public string Text { get; set; } = string.Empty;
     public float Confidence { get; set; }
     public List<WordTimestamp> Words { get; set; } = new();
+    public Guid? SpeakerId { get; set; }
+    public string? SpeakerName { get; set; }
 }
 
 public class WordTimestamp

@@ -87,7 +87,6 @@ public class TranscriptionConfig
 {
     public string Engine { get; set; } = "parakeet";
     public string ParakeetModelPath { get; set; } = "./models/parakeet-tdt-0.6b-v3-int8";
-    public string WhisperModelPath { get; set; } = "./models/whisper-medium.bin";
     public string DefaultModel { get; set; } = "parakeet";
 }
 

@@ -20,9 +20,8 @@ public sealed class ParakeetEncoder : IDisposable
     private readonly bool _lengthIsInt64;
     private const int NMels = 128;
 
-    public ParakeetEncoder(string modelPath)
+    public ParakeetEncoder(string modelPath, SessionOptions opts)
     {
-        var opts = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
         _session = new InferenceSession(modelPath, opts);
 
         var inputNames = _session.InputMetadata.Keys.ToList();

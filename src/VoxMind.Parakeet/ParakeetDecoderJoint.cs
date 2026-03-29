@@ -38,10 +38,9 @@ public sealed class ParakeetDecoderJoint : IDisposable
     private const int StateDim = 640;
     private const int MaxTokensPerFrame = 8;
 
-    public ParakeetDecoderJoint(string modelPath, TokenDecoder tokenDecoder)
+    public ParakeetDecoderJoint(string modelPath, TokenDecoder tokenDecoder, SessionOptions opts)
     {
         _tokenDecoder = tokenDecoder;
-        var opts = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
         _session = new InferenceSession(modelPath, opts);
 
         var inputNames = _session.InputMetadata.Keys.ToList();
