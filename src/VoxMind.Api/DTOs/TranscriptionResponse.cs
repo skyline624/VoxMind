@@ -6,7 +6,7 @@ namespace VoxMind.Api.DTOs;
 
 /// <summary>Réponse OpenAI-compatible pour POST /v1/audio/transcriptions.</summary>
 public record TranscriptionResponse(
-    [property: JsonPropertyName("text")]     string Text,
+    [property: JsonPropertyName("text")] string Text,
     [property: JsonPropertyName("duration")] double Duration,
     [property: JsonPropertyName("language")] string Language,
     [property: JsonPropertyName("speakers")] IReadOnlyList<SpeakerResult> Speakers,
@@ -14,23 +14,23 @@ public record TranscriptionResponse(
 );
 
 public record SpeakerResult(
-    [property: JsonPropertyName("speaker_id")]  string SpeakerId,
-    [property: JsonPropertyName("name")]        string Name,
-    [property: JsonPropertyName("segments")]    IReadOnlyList<SegmentTimespan> Segments
+    [property: JsonPropertyName("speaker_id")] string SpeakerId,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("segments")] IReadOnlyList<SegmentTimespan> Segments
 );
 
 public record SegmentResult(
-    [property: JsonPropertyName("text")]        string Text,
-    [property: JsonPropertyName("start")]       double Start,
-    [property: JsonPropertyName("end")]         double End,
-    [property: JsonPropertyName("confidence")]  float Confidence,
-    [property: JsonPropertyName("speaker_id")]  string? SpeakerId,
-    [property: JsonPropertyName("speaker")]     string? SpeakerName
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("start")] double Start,
+    [property: JsonPropertyName("end")] double End,
+    [property: JsonPropertyName("confidence")] float Confidence,
+    [property: JsonPropertyName("speaker_id")] string? SpeakerId,
+    [property: JsonPropertyName("speaker")] string? SpeakerName
 );
 
 public record SegmentTimespan(
     [property: JsonPropertyName("start")] double Start,
-    [property: JsonPropertyName("end")]   double End
+    [property: JsonPropertyName("end")] double End
 );
 
 public static class TranscriptionMapper

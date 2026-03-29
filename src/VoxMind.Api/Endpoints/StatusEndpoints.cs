@@ -46,22 +46,22 @@ public static class StatusEndpoints
 }
 
 public record StatusResponse(
-    [property: JsonPropertyName("status")]          string Status,
-    [property: JsonPropertyName("version")]         string Version,
-    [property: JsonPropertyName("uptime_seconds")]  long UptimeSeconds,
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("version")] string Version,
+    [property: JsonPropertyName("uptime_seconds")] long UptimeSeconds,
     [property: JsonPropertyName("compute_backend")] string ComputeBackend,
-    [property: JsonPropertyName("models")]          IReadOnlyList<ModelStatusEntry> Models,
-    [property: JsonPropertyName("active_session")]  ActiveSessionInfo? ActiveSession
+    [property: JsonPropertyName("models")] IReadOnlyList<ModelStatusEntry> Models,
+    [property: JsonPropertyName("active_session")] ActiveSessionInfo? ActiveSession
 );
 
 public record ModelStatusEntry(
-    [property: JsonPropertyName("id")]        string Id,
-    [property: JsonPropertyName("loaded")]    bool Loaded,
-    [property: JsonPropertyName("backend")]   string Backend
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("loaded")] bool Loaded,
+    [property: JsonPropertyName("backend")] string Backend
 );
 
 public record ActiveSessionInfo(
-    [property: JsonPropertyName("id")]         Guid Id,
-    [property: JsonPropertyName("name")]       string Name,
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("started_at")] DateTime StartedAt
 );

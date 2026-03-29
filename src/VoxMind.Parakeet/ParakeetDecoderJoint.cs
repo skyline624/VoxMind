@@ -46,11 +46,11 @@ public sealed class ParakeetDecoderJoint : IDisposable
         var inputNames = _session.InputMetadata.Keys.ToList();
         var outputNames = _session.OutputMetadata.Keys.ToList();
 
-        _encoderInputName    = inputNames.Count > 0 ? inputNames[0] : "encoder_outputs";
-        _targetInputName     = inputNames.Count > 1 ? inputNames[1] : "targets";
+        _encoderInputName = inputNames.Count > 0 ? inputNames[0] : "encoder_outputs";
+        _targetInputName = inputNames.Count > 1 ? inputNames[1] : "targets";
         _targetLengthInputName = inputNames.Count > 2 ? inputNames[2] : "target_length";
-        _inputState1Name     = inputNames.Count > 3 ? inputNames[3] : "input_states_1";
-        _inputState2Name     = inputNames.Count > 4 ? inputNames[4] : "input_states_2";
+        _inputState1Name = inputNames.Count > 3 ? inputNames[3] : "input_states_1";
+        _inputState2Name = inputNames.Count > 4 ? inputNames[4] : "input_states_2";
 
         _logitsOutputName = outputNames.Count > 0 ? outputNames[0] : "outputs";
         _outputState1Name = outputNames.Count > 2 ? outputNames[2] : "output_states_1";
@@ -66,8 +66,8 @@ public sealed class ParakeetDecoderJoint : IDisposable
     {
         var result = new List<int>();
         int prevToken = _tokenDecoder.BosIndex;
-        int blankId   = _tokenDecoder.BlankIndex;
-        int eosId     = _tokenDecoder.EosIndex;
+        int blankId = _tokenDecoder.BlankIndex;
+        int eosId = _tokenDecoder.EosIndex;
         int vocabSize = _tokenDecoder.VocabSize;
 
         // Initialize LSTM states to zero: [2, 1, 640]

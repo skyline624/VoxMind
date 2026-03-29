@@ -33,13 +33,13 @@ public static class ModelEndpoints
 
 public record ModelListResponse(
     [property: JsonPropertyName("object")] string Object,
-    [property: JsonPropertyName("data")]   IReadOnlyList<ModelEntry> Data
+    [property: JsonPropertyName("data")] IReadOnlyList<ModelEntry> Data
 );
 
 public record ModelEntry(
-    [property: JsonPropertyName("id")]        string Id,
-    [property: JsonPropertyName("object")]    string Object,
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("object")] string Object,
     [property: JsonPropertyName("available")] bool Available,
-    [property: JsonPropertyName("backend")]   string Backend,
-    [property: JsonPropertyName("note")]      string? Note
+    [property: JsonPropertyName("backend")] string Backend,
+    [property: JsonPropertyName("note")] string? Note
 );

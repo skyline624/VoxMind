@@ -29,13 +29,13 @@ public class SherpaOnnxVadService : IVadService
             return;
         }
 
-        _config.SileroVad.Model             = config.ModelPath;
-        _config.SileroVad.Threshold         = config.Threshold;
+        _config.SileroVad.Model = config.ModelPath;
+        _config.SileroVad.Threshold = config.Threshold;
         _config.SileroVad.MinSilenceDuration = config.MinSilenceDurationSeconds;
-        _config.SileroVad.MinSpeechDuration  = config.MinSpeechDurationSeconds;
-        _config.SileroVad.WindowSize         = 512;
-        _config.SampleRate                   = 16000;
-        _config.NumThreads                   = 1;
+        _config.SileroVad.MinSpeechDuration = config.MinSpeechDurationSeconds;
+        _config.SileroVad.WindowSize = 512;
+        _config.SampleRate = 16000;
+        _config.NumThreads = 1;
 
         IsAvailable = true;
         _logger.LogInformation("Silero VAD chargé depuis {Path}.", config.ModelPath);
@@ -86,10 +86,10 @@ public class SherpaOnnxVadService : IVadService
                 int chunkOffset = 0;
                 while (chunkOffset < rawSamples.Length)
                 {
-                    int len          = Math.Min(chunkSamples, rawSamples.Length - chunkOffset);
-                    float[] chunk    = rawSamples[chunkOffset..(chunkOffset + len)];
+                    int len = Math.Min(chunkSamples, rawSamples.Length - chunkOffset);
+                    float[] chunk = rawSamples[chunkOffset..(chunkOffset + len)];
                     float chunkStart = startSec + chunkOffset / (float)sampleRate;
-                    float chunkEnd   = chunkStart + len / (float)sampleRate;
+                    float chunkEnd = chunkStart + len / (float)sampleRate;
                     segments.Add(new VadSegment(chunkStart, chunkEnd, chunk));
                     chunkOffset += len;
                 }

@@ -70,8 +70,8 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
 
             _tokenDecoder = new TokenDecoder(Path.Combine(_modelDir, "vocab.txt"));
             _preprocessor = new AudioPreprocessor(Path.Combine(_modelDir, "nemo128.onnx"), opts);
-            _encoder      = new ParakeetEncoder(Path.Combine(_modelDir, "encoder-model.int8.onnx"), opts);
-            _decoder      = new ParakeetDecoderJoint(
+            _encoder = new ParakeetEncoder(Path.Combine(_modelDir, "encoder-model.int8.onnx"), opts);
+            _decoder = new ParakeetDecoderJoint(
                                 Path.Combine(_modelDir, "decoder_joint-model.int8.onnx"),
                                 _tokenDecoder,
                                 opts);
@@ -79,9 +79,9 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
             _info = new ModelInfo
             {
                 ModelName = _info.ModelName,
-                Size      = _info.Size,
-                Backend   = ComputeBackend.CPU,
-                IsLoaded  = true
+                Size = _info.Size,
+                Backend = ComputeBackend.CPU,
+                IsLoaded = true
             };
 
             _logger.LogInformation(
@@ -300,9 +300,9 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
         _info = new ModelInfo
         {
             ModelName = _info.ModelName,
-            Size      = size,
-            Backend   = ComputeBackend.CPU,
-            IsLoaded  = false
+            Size = size,
+            Backend = ComputeBackend.CPU,
+            IsLoaded = false
         };
         TryLoadModels();
         return Task.CompletedTask;

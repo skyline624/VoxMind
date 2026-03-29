@@ -73,7 +73,7 @@ public static class TranscriptionEndpoints
                     {
                         if (speakerMap.TryGetValue(seg.Id, out var label))
                         {
-                            seg.SpeakerId   = label.ProfileId;
+                            seg.SpeakerId = label.ProfileId;
                             seg.SpeakerName = label.Name;
                         }
                     }

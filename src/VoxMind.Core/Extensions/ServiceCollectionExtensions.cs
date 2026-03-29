@@ -64,7 +64,7 @@ public static class ServiceCollectionExtensions
                 new Dictionary<string, ITranscriptionService>
                 {
                     ["parakeet"] = sp.GetRequiredService<ITranscriptionService>(),
-                    ["cohere"]   = sp.GetRequiredService<CohereTranscriptionService>(),
+                    ["cohere"] = sp.GetRequiredService<CohereTranscriptionService>(),
                 },
                 defaultModel: config.Ml.Transcription.DefaultModel
             )
