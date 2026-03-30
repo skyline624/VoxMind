@@ -141,14 +141,35 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
 
         foreach (var (profileId, vectors) in snapshot)
         {
+            // Comparer contre le meilleur embedding individuel ET le centroïde moyen
+            // Cela permet de reconnaître un locuteur même avec des conditions d'enregistrement différentes
+            float bestForProfile = 0f;
+
+            // Comparaison individuelle
             foreach (var stored in vectors)
             {
                 float sim = CosineSimilarity(embedding, stored);
-                if (sim > bestSimilarity)
+                if (sim > bestForProfile) bestForProfile = sim;
+            }
+
+            // Comparaison contre le centroïde (moyenne des embeddings du profil)
+            if (vectors.Count > 1)
+            {
+                var centroid = new float[embedding.Length];
+                for (int i = 0; i < centroid.Length; i++)
                 {
-                    bestSimilarity = sim;
-                    bestProfileId = profileId;
+                    float sum = 0f;
+                    foreach (var v in vectors) sum += v[i];
+                    centroid[i] = sum / vectors.Count;
                 }
+                float centroidSim = CosineSimilarity(embedding, centroid);
+                if (centroidSim > bestForProfile) bestForProfile = centroidSim;
+            }
+
+            if (bestForProfile > bestSimilarity)
+            {
+                bestSimilarity = bestForProfile;
+                bestProfileId = profileId;
             }
         }
 

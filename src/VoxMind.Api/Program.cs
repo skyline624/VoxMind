@@ -88,6 +88,11 @@ try
     var db = app.Services.GetRequiredService<VoxMind.Core.Database.VoxMindDbContext>();
     await db.Database.EnsureCreatedAsync();
 
+    // Charger les embeddings en mémoire pour l'identification des locuteurs
+    var speakerSvc = app.Services.GetRequiredService<VoxMind.Core.SpeakerRecognition.ISpeakerIdentificationService>();
+    if (speakerSvc is VoxMind.Core.SpeakerRecognition.SherpaOnnxSpeakerService sherpaSvc)
+        await sherpaSvc.InitializeAsync();
+
     // Endpoints
     app.MapTranscriptionEndpoints();
     app.MapSpeakerEndpoints();

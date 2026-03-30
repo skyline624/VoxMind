@@ -30,10 +30,10 @@
     "vad": {
       "enabled": true,
       "model_path": "/home/pc/devellopement/VoxMind/models/silero_vad.onnx",
-      "threshold": 0.3,
-      "min_silence_duration_seconds": 0.5,
-      "min_speech_duration_seconds": 0.25,
-      "max_segment_duration_seconds": 10.0
+      "threshold": 0.5,
+      "min_silence_duration_seconds": 0.3,
+      "min_speech_duration_seconds": 0.1,
+      "max_segment_duration_seconds": 15.0
     },
     "transcription": {
       "engine": "parakeet",
@@ -42,11 +42,11 @@
     },
     "speaker_recognition": {
       "enabled": true,
-      "confidence_threshold": 0.7,
+      "confidence_threshold": 0.5,
       "sherpa_onnx": {
         "embedding_model_path": "/home/pc/devellopement/VoxMind/models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
         "num_threads": 4,
-        "clustering_threshold": 0.45
+        "clustering_threshold": 0.5
       }
     }
   },
