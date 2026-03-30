@@ -45,6 +45,4 @@ jobs:
       with:
         dotnet-version: '8.0'
     - name: Check format
-      run: |
-        dotnet tool install --global dotnet-format
-        dotnet format --verify-no-changes VoxMind.sln
+      run: dotnet format --verify-no-changes VoxMind.sln

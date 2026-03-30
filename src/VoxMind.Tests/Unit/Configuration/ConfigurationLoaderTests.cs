@@ -8,6 +8,12 @@ public class ConfigurationLoaderTests : IDisposable
 {
     private readonly string _tmpDir;
 
+    // Doit correspondre aux options utilisées dans ConfigurationLoader
+    private static readonly JsonSerializerOptions _writeOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+    };
+
     public ConfigurationLoaderTests()
     {
         _tmpDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
@@ -24,7 +30,7 @@ public class ConfigurationLoaderTests : IDisposable
             Application = new ApplicationConfig { Name = "TestVox", Version = "2.0.0" },
             Audio = new AudioConfig { DefaultSampleRate = 22050 }
         };
-        File.WriteAllText(configPath, JsonSerializer.Serialize(config));
+        File.WriteAllText(configPath, JsonSerializer.Serialize(config, _writeOptions));
 
         // Act
         var loaded = ConfigurationLoader.Load(configPath);
@@ -64,7 +70,7 @@ public class ConfigurationLoaderTests : IDisposable
         var configPath = Path.Combine(_tmpDir, "invalid.json");
         var config = new AppConfiguration();
         config.Ml.SpeakerRecognition.ConfidenceThreshold = 1.5f; // Invalide
-        File.WriteAllText(configPath, JsonSerializer.Serialize(config));
+        File.WriteAllText(configPath, JsonSerializer.Serialize(config, _writeOptions));
 
         Assert.Throws<InvalidOperationException>(() => ConfigurationLoader.Load(configPath));
     }

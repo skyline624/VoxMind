@@ -8,6 +8,7 @@
     <AssemblyName>voxmind</AssemblyName>
     <RootNamespace>VoxMind.CLI</RootNamespace>
     <LangVersion>latest</LangVersion>
+    <NoWarn>ASP0000</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
