@@ -9,13 +9,17 @@ public interface ISpeakerIdentificationService : IDisposable
 {
     /// <summary>
     /// Diarise une liste de segments VAD : extrait les empreintes, regroupe par locuteur
-    /// (clustering greedy cosinus), matche contre les profils connus et crée automatiquement
-    /// les profils inconnus ("Locuteur N").
+    /// (clustering greedy cosinus + fusion agglomérative si numSpeakers est fourni),
+    /// matche contre les profils connus et crée automatiquement les profils inconnus.
     /// Retourne un dictionnaire index de segment → locuteur.
     /// </summary>
+    /// <param name="segments">Segments VAD à diariser.</param>
+    /// <param name="ct">Token d'annulation.</param>
+    /// <param name="numSpeakers">Nombre de locuteurs attendus. Si fourni, force la fusion des clusters jusqu'à ce nombre.</param>
     Task<IReadOnlyDictionary<int, SpeakerLabel>> DiarizeSegmentsAsync(
         IReadOnlyList<VadSegment> segments,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        int? numSpeakers = null);
     /// <summary>Enroller un nouveau locuteur avec une empreinte vocale</summary>
     Task<SpeakerProfile> EnrollSpeakerAsync(string name, float[] embedding, float initialConfidence, int audioDurationSeconds = 0);
 

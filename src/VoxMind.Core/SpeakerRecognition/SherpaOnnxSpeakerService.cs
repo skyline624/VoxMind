@@ -310,7 +310,8 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
     /// <inheritdoc/>
     public async Task<IReadOnlyDictionary<int, SpeakerLabel>> DiarizeSegmentsAsync(
         IReadOnlyList<Vad.VadSegment> segments,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? numSpeakers = null)
     {
         var result = new Dictionary<int, SpeakerLabel>();
 
@@ -318,8 +319,8 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
             return result;
 
         // ── 1. Extraire l'embedding de chaque segment ──────────────────────────
-        // Ignorer les segments trop courts (< 0.75 s = 12 000 samples @ 16kHz) :
-        // les embeddings sont peu fiables sur des fragments aussi courts.
+        // Les segments < 0.75 s (12 000 samples @ 16 kHz) sont extraits sans embedding :
+        // leur locuteur sera propagé depuis le voisin temporel le plus proche (étape 4).
         const int MinSamples = 12_000;
 
         var embeddings = new (int Index, float[] Embedding)[segments.Count];
@@ -345,9 +346,7 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
         }
 
         // ── 2. Clustering greedy par similarité cosinus ─────────────────────────
-        // Chaque cluster = liste d'indices + centroïde courant
         var clusters = new List<(List<int> Indices, float[] Centroid)>();
-        float clusterThreshold = _clusteringThreshold;
 
         foreach (var (idx, emb) in embeddings)
         {
@@ -361,10 +360,9 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
                 if (sim > bestSim) { bestSim = sim; bestCluster = c; }
             }
 
-            if (bestSim >= clusterThreshold && bestCluster >= 0)
+            if (bestSim >= _clusteringThreshold && bestCluster >= 0)
             {
                 clusters[bestCluster].Indices.Add(idx);
-                // Mise à jour du centroïde par moyenne glissante
                 var prev = clusters[bestCluster].Centroid;
                 int count = clusters[bestCluster].Indices.Count;
                 var newCentroid = new float[prev.Length];
@@ -378,15 +376,49 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
             }
         }
 
-        // ── 3. Matcher chaque cluster contre les profils connus ou créer un nouveau ──
+        // ── 3. Fusion agglomérative si numSpeakers est fourni ───────────────────
+        // Tant qu'on a plus de clusters que souhaité, on fusionne les deux plus similaires.
+        if (numSpeakers.HasValue && clusters.Count > numSpeakers.Value)
+        {
+            _logger.LogInformation(
+                "Diarisation : fusion agglomérative de {From} → {To} clusters.",
+                clusters.Count, numSpeakers.Value);
+
+            while (clusters.Count > numSpeakers.Value)
+            {
+                float bestSim = -1f;
+                int bestI = 0, bestJ = 1;
+
+                for (int i = 0; i < clusters.Count - 1; i++)
+                for (int j = i + 1; j < clusters.Count; j++)
+                {
+                    float sim = CosineSimilarity(clusters[i].Centroid, clusters[j].Centroid);
+                    if (sim > bestSim) { bestSim = sim; bestI = i; bestJ = j; }
+                }
+
+                // Fusionner j dans i (moyenne pondérée par taille)
+                int sizeI = clusters[bestI].Indices.Count;
+                int sizeJ = clusters[bestJ].Indices.Count;
+                int total  = sizeI + sizeJ;
+                var mergedCentroid = new float[clusters[bestI].Centroid.Length];
+                for (int k = 0; k < mergedCentroid.Length; k++)
+                    mergedCentroid[k] = (clusters[bestI].Centroid[k] * sizeI + clusters[bestJ].Centroid[k] * sizeJ) / total;
+
+                var mergedIndices = clusters[bestI].Indices;
+                mergedIndices.AddRange(clusters[bestJ].Indices);
+                clusters[bestI] = (mergedIndices, mergedCentroid);
+                clusters.RemoveAt(bestJ);
+            }
+        }
+
+        // ── 4. Matcher chaque cluster contre les profils connus ou créer un nouveau ──
         int autoCount = await _db.SpeakerProfiles.CountAsync(p => p.IsActive, ct);
 
         for (int c = 0; c < clusters.Count; c++)
         {
             ct.ThrowIfCancellationRequested();
 
-            var centroid = clusters[c].Centroid;
-            var identification = await IdentifyAsync(centroid);
+            var identification = await IdentifyAsync(clusters[c].Centroid);
 
             SpeakerLabel label;
             if (identification.IsIdentified && identification.ProfileId.HasValue)
@@ -396,10 +428,9 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
             }
             else
             {
-                // Nouveau locuteur → création automatique de profil
                 autoCount++;
                 var name = $"Locuteur {autoCount}";
-                var profile = await EnrollSpeakerAsync(name, centroid, identification.Confidence,
+                var profile = await EnrollSpeakerAsync(name, clusters[c].Centroid, identification.Confidence,
                     audioDurationSeconds: (int)clusters[c].Indices
                         .Sum(i => segments[i].EndSeconds - segments[i].StartSeconds));
                 label = new SpeakerLabel(profile.Id, name);
@@ -410,6 +441,30 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
             foreach (var idx in clusters[c].Indices)
                 result[idx] = label;
         }
+
+        // ── 5. Propager le locuteur aux segments courts (sans embedding) ─────────
+        // Chaque segment court hérite du locuteur du voisin temporellement le plus proche.
+        for (int i = 0; i < segments.Count; i++)
+        {
+            if (result.ContainsKey(i)) continue;
+
+            float midpoint = (segments[i].StartSeconds + segments[i].EndSeconds) / 2f;
+            int bestNeighbor = -1;
+            float bestDist = float.MaxValue;
+
+            foreach (var (assignedIdx, _) in result)
+            {
+                float neighborMid = (segments[assignedIdx].StartSeconds + segments[assignedIdx].EndSeconds) / 2f;
+                float dist = MathF.Abs(neighborMid - midpoint);
+                if (dist < bestDist) { bestDist = dist; bestNeighbor = assignedIdx; }
+            }
+
+            if (bestNeighbor >= 0)
+                result[i] = result[bestNeighbor];
+        }
+
+        _logger.LogInformation("Diarisation : {Count} locuteur(s) détecté(s).",
+            result.Values.DistinctBy(l => l.ProfileId).Count());
 
         return result;
     }

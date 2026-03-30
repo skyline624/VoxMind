@@ -23,6 +23,7 @@ public static class TranscriptionEndpoints
                 "Compatible OpenAI /v1/audio/transcriptions. " +
                 "Accepte MP3, WAV, OGG, Opus, WebM via FFmpeg. " +
                 "Paramètre ?model=parakeet|cohere (défaut : parakeet). " +
+                "Paramètre ?num_speakers=N : nombre de locuteurs attendus — force la fusion des clusters jusqu'à N (améliore la diarisation quand le nombre est connu). " +
                 "La diarisation automatique crée les profils locuteurs à la volée.");
 
         return app;
@@ -32,6 +33,7 @@ public static class TranscriptionEndpoints
         IFormFile file,
         [FromQuery] string? model,
         [FromQuery] string? language,
+        [FromQuery(Name = "num_speakers")] int? numSpeakers,
         TranscriptionEngineRegistry registry,
         ISpeakerIdentificationService speakerSvc,
         ILogger<TranscriptionResponse> logger,
@@ -68,7 +70,7 @@ public static class TranscriptionEndpoints
             {
                 try
                 {
-                    var speakerMap = await speakerSvc.DiarizeSegmentsAsync(transcription.VadSegments, ct);
+                    var speakerMap = await speakerSvc.DiarizeSegmentsAsync(transcription.VadSegments, ct, numSpeakers);
                     foreach (var seg in transcription.Segments)
                     {
                         if (speakerMap.TryGetValue(seg.Id, out var label))
