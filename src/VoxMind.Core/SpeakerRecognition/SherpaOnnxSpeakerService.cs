@@ -411,16 +411,16 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
                 int bestI = 0, bestJ = 1;
 
                 for (int i = 0; i < clusters.Count - 1; i++)
-                for (int j = i + 1; j < clusters.Count; j++)
-                {
-                    float sim = CosineSimilarity(clusters[i].Centroid, clusters[j].Centroid);
-                    if (sim > bestSim) { bestSim = sim; bestI = i; bestJ = j; }
-                }
+                    for (int j = i + 1; j < clusters.Count; j++)
+                    {
+                        float sim = CosineSimilarity(clusters[i].Centroid, clusters[j].Centroid);
+                        if (sim > bestSim) { bestSim = sim; bestI = i; bestJ = j; }
+                    }
 
                 // Fusionner j dans i (moyenne pondérée par taille)
                 int sizeI = clusters[bestI].Indices.Count;
                 int sizeJ = clusters[bestJ].Indices.Count;
-                int total  = sizeI + sizeJ;
+                int total = sizeI + sizeJ;
                 var mergedCentroid = new float[clusters[bestI].Centroid.Length];
                 for (int k = 0; k < mergedCentroid.Length; k++)
                     mergedCentroid[k] = (clusters[bestI].Centroid[k] * sizeI + clusters[bestJ].Centroid[k] * sizeJ) / total;
