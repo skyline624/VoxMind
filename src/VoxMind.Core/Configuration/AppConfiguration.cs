@@ -15,36 +15,35 @@ public class AppConfiguration
 
     /// <summary>
     /// Gets the base data directory for VoxMind.
-    /// Priority: VOXMIND_DATA_DIR env > ./voice_data (relative to executable or cwd)
+    /// Priority: VOXMIND_DATA_DIR env > walk up from executable > walk up from cwd > ./voice_data
     /// </summary>
     public static string GetDataDirectory()
     {
         // 1. VOXMIND_DATA_DIR env variable
-        var env = Environment.GetEnvironmentVariable("VOXMIND_DATA_DIR");
-        if (!string.IsNullOrEmpty(env))
+        var env = System.Environment.GetEnvironmentVariable("VOXMIND_DATA_DIR");
+        if (!string.IsNullOrEmpty(env) && System.IO.Directory.Exists(env))
             return env;
 
-        // 2. Legacy path for existing users: ~/voice_data
-        var home = Environment.GetEnvironmentVariable("HOME");
-        if (!string.IsNullOrEmpty(home))
+        // 2. Walk up from the executable
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        for (int i = 0; i < 8 && dir != null; i++, dir = dir.Parent)
         {
-            var legacyPath = System.IO.Path.Combine(home, "voice_data");
-            if (System.IO.Directory.Exists(legacyPath))
-                return legacyPath;
+            var candidate = System.IO.Path.Combine(dir.FullName, "voice_data");
+            if (System.IO.Directory.Exists(candidate))
+                return candidate;
         }
 
-        // 3. ./voice_data relative to executable
-        var relativeVoiceData = System.IO.Path.Combine(AppContext.BaseDirectory, "voice_data");
-        if (System.IO.Directory.Exists(relativeVoiceData))
-            return relativeVoiceData;
+        // 3. Walk up from current working directory
+        dir = new System.IO.DirectoryInfo(System.IO.Directory.GetCurrentDirectory());
+        for (int i = 0; i < 8 && dir != null; i++, dir = dir.Parent)
+        {
+            var candidate = System.IO.Path.Combine(dir.FullName, "voice_data");
+            if (System.IO.Directory.Exists(candidate))
+                return candidate;
+        }
 
-        // 4. Current directory for dev
-        var cwdVoiceData = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "voice_data");
-        if (System.IO.Directory.Exists(cwdVoiceData))
-            return cwdVoiceData;
-
-        // 5. Default: ./voice_data relative to current directory (will be created)
-        return cwdVoiceData;
+        // 4. Default: ./voice_data relative to current directory (will be created)
+        return System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "voice_data");
     }
 
     /// <summary>
@@ -52,6 +51,44 @@ public class AppConfiguration
     /// </summary>
     public static string GetDefaultPath(params string[] parts)
         => System.IO.Path.Combine(GetDataDirectory(), System.IO.Path.Combine(parts));
+
+    /// <summary>
+    /// Finds the models directory by walking up from the executable until a models/ folder is found.
+    /// Priority: VOXMIND_MODELS_DIR env > walk up from AppContext.BaseDirectory > walk up from cwd > ./models
+    /// </summary>
+    public static string GetModelsDirectory()
+    {
+        var env = System.Environment.GetEnvironmentVariable("VOXMIND_MODELS_DIR");
+        if (!string.IsNullOrEmpty(env) && System.IO.Directory.Exists(env))
+            return env;
+
+        // Walk up from the executable (handles dotnet run, published builds, etc.)
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        for (int i = 0; i < 8 && dir != null; i++, dir = dir.Parent)
+        {
+            var candidate = System.IO.Path.Combine(dir.FullName, "models");
+            if (System.IO.Directory.Exists(candidate))
+                return candidate;
+        }
+
+        // Walk up from current working directory
+        dir = new System.IO.DirectoryInfo(System.IO.Directory.GetCurrentDirectory());
+        for (int i = 0; i < 8 && dir != null; i++, dir = dir.Parent)
+        {
+            var candidate = System.IO.Path.Combine(dir.FullName, "models");
+            if (System.IO.Directory.Exists(candidate))
+                return candidate;
+        }
+
+        // Default: ./models relative to current directory (will be created/downloaded)
+        return System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "models");
+    }
+
+    /// <summary>
+    /// Helper to build a path relative to the models directory.
+    /// </summary>
+    public static string GetModelPath(params string[] parts)
+        => System.IO.Path.Combine(GetModelsDirectory(), System.IO.Path.Combine(parts));
 }
 
 public class ApplicationConfig
@@ -86,7 +123,7 @@ public class MlConfig
 public class TranscriptionConfig
 {
     public string Engine { get; set; } = "parakeet";
-    public string ParakeetModelPath { get; set; } = "./models/parakeet-tdt-0.6b-v3-int8";
+    public string ParakeetModelPath { get; set; } = AppConfiguration.GetModelPath("parakeet-tdt-0.6b-v3-int8");
     public string DefaultModel { get; set; } = "parakeet";
 }
 
@@ -100,9 +137,9 @@ public class SpeakerRecognitionConfig
 public class SherpaOnnxConfig
 {
     public string SegmentationModelPath { get; set; }
-        = "./models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx";
+        = AppConfiguration.GetModelPath("sherpa-onnx-pyannote-segmentation-3-0", "model.onnx");
     public string EmbeddingModelPath { get; set; }
-        = "./models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
+        = AppConfiguration.GetModelPath("3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx");
     public int NumThreads { get; set; } = 4;
     public float ClusteringThreshold { get; set; } = 0.5f;
 }
@@ -163,7 +200,7 @@ public class MetricsConfig
 public class VadConfig
 {
     public bool Enabled { get; set; } = true;
-    public string ModelPath { get; set; } = "./models/silero_vad.onnx";
+    public string ModelPath { get; set; } = AppConfiguration.GetModelPath("silero_vad.onnx");
     public float Threshold { get; set; } = 0.5f;
     public float MinSilenceDurationSeconds { get; set; } = 0.5f;
     public float MinSpeechDurationSeconds { get; set; } = 0.25f;
