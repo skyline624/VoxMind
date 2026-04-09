@@ -185,6 +185,7 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
             Confidence = resultSegments.Count > 0
                 ? resultSegments.Average(s => s.Confidence) : 0f,
             VadSegments = segments,
+            AudioSamples = allSamples,
         };
     }
 

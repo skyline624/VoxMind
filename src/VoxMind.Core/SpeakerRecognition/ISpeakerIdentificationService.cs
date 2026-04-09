@@ -8,16 +8,19 @@ public record SpeakerLabel(Guid? ProfileId, string Name);
 public interface ISpeakerIdentificationService : IDisposable
 {
     /// <summary>
-    /// Diarise une liste de segments VAD : extrait les empreintes, regroupe par locuteur
-    /// (clustering greedy cosinus + fusion agglomérative si numSpeakers est fourni),
-    /// matche contre les profils connus et crée automatiquement les profils inconnus.
-    /// Retourne un dictionnaire index de segment → locuteur.
+    /// Diarise un flux audio complet via le pipeline pyannote-3.0 (sherpa-onnx OfflineSpeakerDiarization) :
+    /// segmentation locale par fenêtres glissantes, extraction d'embeddings, clustering rapide
+    /// (avec gestion des chevauchements). Pour chaque cluster détecté, matche contre les profils
+    /// enrôlés via IdentifyAsync ; si aucun match, crée automatiquement un profil "Locuteur N".
+    /// Retourne un dictionnaire index de segment VAD → locuteur (pour mappage downstream).
     /// </summary>
-    /// <param name="segments">Segments VAD à diariser.</param>
+    /// <param name="audioSamples">Flux audio complet en PCM float32 16 kHz mono (requis par pyannote).</param>
+    /// <param name="vadSegments">Segments VAD à étiqueter (mappage par recouvrement temporel).</param>
     /// <param name="ct">Token d'annulation.</param>
-    /// <param name="numSpeakers">Nombre de locuteurs attendus. Si fourni, force la fusion des clusters jusqu'à ce nombre.</param>
-    Task<IReadOnlyDictionary<int, SpeakerLabel>> DiarizeSegmentsAsync(
-        IReadOnlyList<VadSegment> segments,
+    /// <param name="numSpeakers">Nombre de locuteurs attendus. Si fourni, force le clustering à ce nombre (Threshold ignoré).</param>
+    Task<IReadOnlyDictionary<int, SpeakerLabel>> DiarizeAudioAsync(
+        float[] audioSamples,
+        IReadOnlyList<VadSegment> vadSegments,
         CancellationToken ct = default,
         int? numSpeakers = null);
     /// <summary>Enroller un nouveau locuteur avec une empreinte vocale</summary>

@@ -23,6 +23,8 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
     private readonly float _clusteringThreshold;
     private readonly string _embeddingsDir;
     private readonly SpeakerEmbeddingExtractor? _extractor;
+    private readonly OfflineSpeakerDiarization? _diarizer;
+    private readonly object _diarizerLock = new();
 
     private readonly Dictionary<Guid, List<float[]>> _embeddingCache = new();
     private readonly object _cacheLock = new();
@@ -64,6 +66,44 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
         else
         {
             _logger.LogWarning("Modèle d'embedding SherpaOnnx introuvable : {Path}. Speaker recognition désactivé.", modelPath);
+        }
+
+        // OfflineSpeakerDiarization (pyannote-3.0 + 3D-Speaker) — qualité PyAnnote en C# pur.
+        // Requiert les DEUX modèles présents : segmentation + embedding.
+        var segPath = config.SherpaOnnx.SegmentationModelPath;
+        if (_extractor is not null && File.Exists(segPath))
+        {
+            try
+            {
+                var diarConfig = new OfflineSpeakerDiarizationConfig();
+                diarConfig.Segmentation.Pyannote.Model = segPath;
+                diarConfig.Segmentation.NumThreads = config.SherpaOnnx.NumThreads;
+                diarConfig.Segmentation.Debug = 0;
+                diarConfig.Segmentation.Provider = "cpu";
+                diarConfig.Embedding.Model = modelPath;
+                diarConfig.Embedding.NumThreads = config.SherpaOnnx.NumThreads;
+                diarConfig.Embedding.Debug = 0;
+                diarConfig.Embedding.Provider = "cpu";
+                diarConfig.Clustering.NumClusters = -1; // -1 = use threshold mode by default
+                diarConfig.Clustering.Threshold = config.SherpaOnnx.ClusteringThreshold;
+                diarConfig.MinDurationOn = config.SherpaOnnx.MinDurationOn;
+                diarConfig.MinDurationOff = config.SherpaOnnx.MinDurationOff;
+
+                _diarizer = new OfflineSpeakerDiarization(diarConfig);
+                _logger.LogInformation(
+                    "OfflineSpeakerDiarization initialisé (segmentation: {Seg}, embedding: {Emb}).",
+                    segPath, modelPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Impossible d'initialiser OfflineSpeakerDiarization. Diarisation : fallback legacy.");
+            }
+        }
+        else if (_extractor is not null)
+        {
+            _logger.LogWarning(
+                "Modèle de segmentation pyannote introuvable : {Path}. Diarisation : fallback legacy (clustering greedy).",
+                segPath);
         }
     }
 
@@ -107,24 +147,12 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
         if (_extractor is null)
             return Task.FromResult(SpeakerIdentificationResult.Unknown(_confidenceThreshold));
 
-        try
-        {
-            float[] samples = ConvertWavToFloat(audioData);
-            if (samples.Length == 0)
-                return Task.FromResult(SpeakerIdentificationResult.Unknown(_confidenceThreshold));
-
-            var stream = _extractor.CreateStream();
-            stream.AcceptWaveform(16000, samples);
-            stream.InputFinished();
-            float[] embedding = _extractor.Compute(stream);
-
-            return IdentifyAsync(embedding);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Erreur lors de l'extraction d'embedding sherpa-onnx.");
+        float[] samples = ConvertWavToFloat(audioData);
+        var embedding = ExtractEmbeddingFromSamples(samples);
+        if (embedding is null)
             return Task.FromResult(SpeakerIdentificationResult.Unknown(_confidenceThreshold));
-        }
+
+        return IdentifyAsync(embedding);
     }
 
     public async Task<SpeakerIdentificationResult> IdentifyAsync(float[] embedding)
@@ -349,29 +377,150 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
     public Task<float[]?> ExtractEmbeddingAsync(byte[] audioData, CancellationToken ct = default)
     {
         if (_extractor is null) return Task.FromResult<float[]?>(null);
-        try
-        {
-            float[] samples = ConvertWavToFloat(audioData);
-            if (samples.Length == 0) return Task.FromResult<float[]?>(null);
-            var stream = _extractor.CreateStream();
-            stream.AcceptWaveform(16000, samples);
-            stream.InputFinished();
-            return Task.FromResult<float[]?>(_extractor.Compute(stream));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Erreur extraction embedding pour enrollment.");
-            return Task.FromResult<float[]?>(null);
-        }
+        float[] samples = ConvertWavToFloat(audioData);
+        return Task.FromResult(ExtractEmbeddingFromSamples(samples));
     }
 
     public Task<bool> CheckHealthAsync() => Task.FromResult(_extractor is not null);
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyDictionary<int, SpeakerLabel>> DiarizeSegmentsAsync(
-        IReadOnlyList<Vad.VadSegment> segments,
+    public async Task<IReadOnlyDictionary<int, SpeakerLabel>> DiarizeAudioAsync(
+        float[] audioSamples,
+        IReadOnlyList<Vad.VadSegment> vadSegments,
         CancellationToken ct = default,
         int? numSpeakers = null)
+    {
+        if (_extractor is null || vadSegments.Count == 0 || audioSamples.Length == 0)
+            return new Dictionary<int, SpeakerLabel>();
+
+        // Pas de modèle de segmentation pyannote → fallback sur le clustering greedy legacy
+        if (_diarizer is null)
+            return await DiarizeFallback(vadSegments, ct, numSpeakers);
+
+        // ── 1. Configurer dynamiquement le nombre de clusters si fourni ─────────
+        // sherpa-onnx accepte SetConfig à chaud — pas besoin de recharger le modèle.
+        lock (_diarizerLock)
+        {
+            var liveCfg = new OfflineSpeakerDiarizationConfig();
+            liveCfg.Clustering.NumClusters = numSpeakers ?? -1;
+            liveCfg.Clustering.Threshold = _clusteringThreshold;
+            _diarizer.SetConfig(liveCfg);
+        }
+
+        // ── 2. Lancer le pipeline pyannote-3.0 (sync — wrappé en Task.Run) ──────
+        OfflineSpeakerDiarizationSegment[] diarSegments;
+        try
+        {
+            diarSegments = await Task.Run(() => _diarizer.Process(audioSamples), ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "OfflineSpeakerDiarization a échoué — fallback legacy.");
+            return await DiarizeFallback(vadSegments, ct, numSpeakers);
+        }
+
+        if (diarSegments.Length == 0)
+            return new Dictionary<int, SpeakerLabel>();
+
+        _logger.LogInformation(
+            "Diarisation pyannote : {Segments} segments, {Speakers} locuteur(s) bruts.",
+            diarSegments.Length,
+            diarSegments.Select(s => s.Speaker).Distinct().Count());
+
+        // ── 3. Pour chaque cluster int → extraire un embedding représentatif ────
+        // et matcher contre les profils enrôlés (réutilise IdentifyAsync existant).
+        int autoCount;
+        await using (var db = await _dbFactory.CreateDbContextAsync(ct))
+            autoCount = await db.SpeakerProfiles.CountAsync(p => p.IsActive, ct);
+
+        var clusterToLabel = new Dictionary<int, SpeakerLabel>();
+        foreach (var clusterId in diarSegments.Select(s => s.Speaker).Distinct())
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // Plus long segment du cluster comme représentant (meilleur SNR)
+            var rep = diarSegments
+                .Where(s => s.Speaker == clusterId)
+                .OrderByDescending(s => s.End - s.Start)
+                .First();
+
+            int sliceStart = Math.Max(0, (int)(rep.Start * 16000));
+            int sliceEnd = Math.Min(audioSamples.Length, (int)(rep.End * 16000));
+            if (sliceEnd <= sliceStart) continue;
+
+            var slice = audioSamples[sliceStart..sliceEnd];
+            float[]? emb = ExtractEmbeddingFromSamples(slice);
+            if (emb is null) continue;
+
+            var ident = await IdentifyAsync(emb);
+            if (ident.IsIdentified && ident.ProfileId.HasValue)
+            {
+                clusterToLabel[clusterId] = new SpeakerLabel(ident.ProfileId, ident.SpeakerName ?? $"Locuteur {clusterId + 1}");
+                await UpdateLastSeenAsync(ident.ProfileId.Value);
+            }
+            else
+            {
+                autoCount++;
+                var name = $"Locuteur {autoCount}";
+                int totalSec = (int)diarSegments.Where(s => s.Speaker == clusterId).Sum(s => s.End - s.Start);
+                var profile = await EnrollSpeakerAsync(name, emb, ident.Confidence, audioDurationSeconds: totalSec);
+                clusterToLabel[clusterId] = new SpeakerLabel(profile.Id, name);
+                _logger.LogInformation("Diarisation : nouveau profil auto '{Name}' créé.", name);
+            }
+        }
+
+        // ── 4. Mapper chaque VadSegment au cluster qui le recouvre le plus ──────
+        var result = new Dictionary<int, SpeakerLabel>();
+        for (int i = 0; i < vadSegments.Count; i++)
+        {
+            var v = vadSegments[i];
+            float bestOverlap = 0f;
+            int bestSpeaker = -1;
+            foreach (var ds in diarSegments)
+            {
+                float overlap = Math.Max(0f, Math.Min(ds.End, v.EndSeconds) - Math.Max(ds.Start, v.StartSeconds));
+                if (overlap > bestOverlap) { bestOverlap = overlap; bestSpeaker = ds.Speaker; }
+            }
+            if (bestSpeaker >= 0 && clusterToLabel.TryGetValue(bestSpeaker, out var lbl))
+                result[i] = lbl;
+        }
+
+        _logger.LogInformation("Diarisation : {Count} locuteur(s) finaux assignés.",
+            result.Values.DistinctBy(l => l.ProfileId).Count());
+
+        return result;
+    }
+
+    /// <summary>
+    /// Centralise l'extraction d'embedding depuis un buffer PCM float32 16 kHz mono.
+    /// Retourne null si l'extracteur n'est pas chargé ou en cas d'erreur.
+    /// </summary>
+    private float[]? ExtractEmbeddingFromSamples(float[] samples)
+    {
+        if (_extractor is null || samples.Length == 0) return null;
+        try
+        {
+            var stream = _extractor.CreateStream();
+            stream.AcceptWaveform(16000, samples);
+            stream.InputFinished();
+            return _extractor.Compute(stream);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "ExtractEmbeddingFromSamples a échoué.");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Implémentation legacy : clustering greedy + fusion agglomérative + propagation.
+    /// Conservée comme fallback quand le modèle de segmentation pyannote est absent.
+    /// À supprimer une fois la migration validée en production.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<int, SpeakerLabel>> DiarizeFallback(
+        IReadOnlyList<Vad.VadSegment> segments,
+        CancellationToken ct,
+        int? numSpeakers)
     {
         var result = new Dictionary<int, SpeakerLabel>();
 
@@ -574,6 +723,7 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
     {
         if (_disposed) return;
         _disposed = true;
+        _diarizer?.Dispose();
         _extractor?.Dispose();
     }
 }

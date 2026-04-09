@@ -76,6 +76,16 @@ public class SherpaOnnxSpeakerServiceTests : IDisposable
         Assert.Null(ex);
     }
 
+    [Fact]
+    public async Task DiarizeAudioAsync_WithoutModel_ReturnsEmpty()
+    {
+        // _extractor is null (model file doesn't exist) → fallback path returns empty
+        var result = await _service.DiarizeAudioAsync(
+            new float[16000],
+            Array.Empty<VoxMind.Core.Vad.VadSegment>());
+        Assert.Empty(result);
+    }
+
     public void Dispose()
     {
         _service.Dispose();

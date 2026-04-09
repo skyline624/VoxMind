@@ -139,9 +139,15 @@ public class SherpaOnnxConfig
     public string SegmentationModelPath { get; set; }
         = AppConfiguration.GetModelPath("sherpa-onnx-pyannote-segmentation-3-0", "model.onnx");
     public string EmbeddingModelPath { get; set; }
-        = AppConfiguration.GetModelPath("3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx");
+        = AppConfiguration.GetModelPath("3dspeaker_speech_eres2net_sv_zh-cn_16k-common.onnx");
     public int NumThreads { get; set; } = 4;
     public float ClusteringThreshold { get; set; } = 0.5f;
+
+    /// <summary>Pyannote diarizer: minimum speech duration to keep a segment "on" (seconds).</summary>
+    public float MinDurationOn { get; set; } = 0.3f;
+
+    /// <summary>Pyannote diarizer: minimum silence duration to consider a segment ended (seconds).</summary>
+    public float MinDurationOff { get; set; } = 0.5f;
 }
 
 public class DatabaseConfig
