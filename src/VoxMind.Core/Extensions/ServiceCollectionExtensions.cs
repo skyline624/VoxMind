@@ -18,10 +18,11 @@ public static class ServiceCollectionExtensions
         // Configuration
         services.AddSingleton(config);
 
-        // Base de données — Singleton pour compatibilité avec les services Singleton (SessionManager, etc.)
-        services.AddDbContext<VoxMindDbContext>(options =>
-            options.UseSqlite($"Data Source={config.Database.Path}"),
-            ServiceLifetime.Singleton);
+        // Base de données — DbContextFactory : chaque opération crée son propre contexte court.
+        // Indispensable pour la sécurité de concurrence : DbContext n'est PAS thread-safe et
+        // les services consommateurs (SessionManager, SherpaOnnxSpeakerService) sont Singleton.
+        services.AddDbContextFactory<VoxMindDbContext>(options =>
+            options.UseSqlite($"Data Source={config.Database.Path}"));
 
         // Audio (sélection par plateforme)
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -74,7 +75,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISpeakerIdentificationService>(sp =>
             new SherpaOnnxSpeakerService(
                 config.Ml.SpeakerRecognition,
-                sp.GetRequiredService<VoxMindDbContext>(),
+                sp.GetRequiredService<IDbContextFactory<VoxMindDbContext>>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<SherpaOnnxSpeakerService>>()
             )
         );
@@ -87,7 +88,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<ITranscriptionService>(),
                 sp.GetRequiredService<ISpeakerIdentificationService>(),
                 sp.GetRequiredService<ISummaryGenerator>(),
-                sp.GetRequiredService<VoxMindDbContext>(),
+                sp.GetRequiredService<IDbContextFactory<VoxMindDbContext>>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<SessionManager>>(),
                 config.Session.OutputFolder
             )
@@ -98,9 +99,8 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddVoxMindDatabase(this IServiceCollection services, string dbPath)
     {
-        services.AddDbContext<VoxMindDbContext>(options =>
-            options.UseSqlite($"Data Source={dbPath}"),
-            ServiceLifetime.Singleton);
+        services.AddDbContextFactory<VoxMindDbContext>(options =>
+            options.UseSqlite($"Data Source={dbPath}"));
         return services;
     }
 }

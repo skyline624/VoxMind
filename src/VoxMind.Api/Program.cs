@@ -1,4 +1,5 @@
 using FFMpegCore;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 using VoxMind.Api.Endpoints;
 using VoxMind.Core.Configuration;
@@ -78,6 +79,46 @@ try
     app.UseExceptionHandler();
     app.UseSerilogRequestLogging();
 
+    // ── Authentification API key ──────────────────────────────────────────────
+    // Headers X-Api-Key obligatoire sauf sur /health, /swagger. Si ApiKey n'est pas
+    // configurée, l'auth est désactivée (warning au démarrage) — pratique pour le dev,
+    // mais à imposer en production via voice_data/config/config.json.
+    var apiKey = appConfig.Api.ApiKey;
+    if (string.IsNullOrEmpty(apiKey))
+    {
+        Log.Warning("VoxMind.Api : aucune ApiKey configurée — l'API est OUVERTE. " +
+                    "Configurez api.api_key dans config.json pour activer l'authentification.");
+    }
+    else
+    {
+        app.Use(async (ctx, next) =>
+        {
+            var path = ctx.Request.Path.Value ?? string.Empty;
+            if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase))
+            {
+                await next();
+                return;
+            }
+
+            if (!ctx.Request.Headers.TryGetValue("X-Api-Key", out var provided) ||
+                !string.Equals(provided.ToString(), apiKey, StringComparison.Ordinal))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await ctx.Response.WriteAsJsonAsync(new
+                {
+                    type = "https://tools.ietf.org/html/rfc7235#section-3.1",
+                    title = "Unauthorized",
+                    status = 401,
+                    detail = "Header X-Api-Key manquant ou invalide."
+                });
+                return;
+            }
+
+            await next();
+        });
+    }
+
     if (appConfig.Api.EnableSwagger)
     {
         app.UseSwagger();
@@ -85,8 +126,9 @@ try
     }
 
     // Initialiser la DB (crée les tables si elles n'existent pas)
-    var db = app.Services.GetRequiredService<VoxMind.Core.Database.VoxMindDbContext>();
-    await db.Database.EnsureCreatedAsync();
+    var dbFactory = app.Services.GetRequiredService<IDbContextFactory<VoxMind.Core.Database.VoxMindDbContext>>();
+    await using (var db = await dbFactory.CreateDbContextAsync())
+        await db.Database.EnsureCreatedAsync();
 
     // Charger les embeddings en mémoire pour l'identification des locuteurs
     var speakerSvc = app.Services.GetRequiredService<VoxMind.Core.SpeakerRecognition.ISpeakerIdentificationService>();

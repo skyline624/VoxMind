@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using System.CommandLine;
@@ -45,9 +46,10 @@ internal class Program
         services.AddVoxMind(config);
         var sp = services.BuildServiceProvider();
 
-        // Initialiser la DB
-        var db = sp.GetRequiredService<VoxMind.Core.Database.VoxMindDbContext>();
-        await db.Database.EnsureCreatedAsync(cts.Token);
+        // Initialiser la DB via le factory (DbContext n'est plus enregistré directement)
+        var dbFactory = sp.GetRequiredService<IDbContextFactory<VoxMind.Core.Database.VoxMindDbContext>>();
+        await using (var db = await dbFactory.CreateDbContextAsync(cts.Token))
+            await db.Database.EnsureCreatedAsync(cts.Token);
 
         // Charger le modèle de transcription
         var transcription = sp.GetRequiredService<ITranscriptionService>();

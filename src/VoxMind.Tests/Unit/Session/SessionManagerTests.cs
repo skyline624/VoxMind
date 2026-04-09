@@ -1,8 +1,6 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using VoxMind.Core.Audio;
-using VoxMind.Core.Database;
 using VoxMind.Core.Session;
 using VoxMind.Core.SpeakerRecognition;
 using VoxMind.Core.Transcription;
@@ -16,7 +14,7 @@ public class SessionManagerTests : IDisposable
     private readonly Mock<ITranscriptionService> _mockTranscription;
     private readonly Mock<ISpeakerIdentificationService> _mockSpeaker;
     private readonly Mock<ISummaryGenerator> _mockSummary;
-    private readonly VoxMindDbContext _db;
+    private readonly TestDbContextFactory _dbFactory;
     private readonly SessionManager _manager;
 
     public SessionManagerTests()
@@ -26,11 +24,7 @@ public class SessionManagerTests : IDisposable
         _mockSpeaker = new Mock<ISpeakerIdentificationService>();
         _mockSummary = new Mock<ISummaryGenerator>();
 
-        // DB en mémoire pour les tests
-        var options = new DbContextOptionsBuilder<VoxMindDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .Options;
-        _db = new VoxMindDbContext(options);
+        _dbFactory = new TestDbContextFactory();
 
         // Configurer les mocks de base
         _mockAudio.Setup(a => a.StartCaptureAsync(It.IsAny<AudioConfiguration>(), It.IsAny<CancellationToken>()))
@@ -46,7 +40,7 @@ public class SessionManagerTests : IDisposable
             _mockTranscription.Object,
             _mockSpeaker.Object,
             _mockSummary.Object,
-            _db,
+            _dbFactory,
             NullLogger<SessionManager>.Instance,
             tmpDir
         );
@@ -146,6 +140,5 @@ public class SessionManagerTests : IDisposable
     public void Dispose()
     {
         _manager.Dispose();
-        _db.Dispose();
     }
 }
