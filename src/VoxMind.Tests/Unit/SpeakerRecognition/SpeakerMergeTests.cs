@@ -1,7 +1,5 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using VoxMind.Core.Configuration;
-using VoxMind.Core.Database;
 using VoxMind.Core.SpeakerRecognition;
 using Xunit;
 
@@ -9,16 +7,13 @@ namespace VoxMind.Tests.Unit.SpeakerRecognition;
 
 public class SpeakerMergeTests : IDisposable
 {
-    private readonly VoxMindDbContext _db;
+    private readonly TestDbContextFactory _dbFactory;
     private readonly SherpaOnnxSpeakerService _service;
     private readonly string _tmpDir;
 
     public SpeakerMergeTests()
     {
-        var options = new DbContextOptionsBuilder<VoxMindDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
-        _db = new VoxMindDbContext(options);
+        _dbFactory = new TestDbContextFactory();
 
         _tmpDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(_tmpDir);
@@ -28,7 +23,7 @@ public class SpeakerMergeTests : IDisposable
             SherpaOnnx = new SherpaOnnxConfig { EmbeddingModelPath = "nonexistent.onnx" }
         };
         _service = new SherpaOnnxSpeakerService(
-            config, _db,
+            config, _dbFactory,
             NullLogger<SherpaOnnxSpeakerService>.Instance,
             embeddingsDir: _tmpDir
         );
@@ -150,7 +145,6 @@ public class SpeakerMergeTests : IDisposable
     public void Dispose()
     {
         _service.Dispose();
-        _db.Dispose();
         Directory.Delete(_tmpDir, recursive: true);
     }
 }

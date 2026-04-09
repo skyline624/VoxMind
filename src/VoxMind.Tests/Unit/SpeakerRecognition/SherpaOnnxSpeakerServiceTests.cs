@@ -1,7 +1,5 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using VoxMind.Core.Configuration;
-using VoxMind.Core.Database;
 using VoxMind.Core.SpeakerRecognition;
 using Xunit;
 
@@ -13,16 +11,13 @@ namespace VoxMind.Tests.Unit.SpeakerRecognition;
 /// </summary>
 public class SherpaOnnxSpeakerServiceTests : IDisposable
 {
-    private readonly VoxMindDbContext _db;
+    private readonly TestDbContextFactory _dbFactory;
     private readonly SherpaOnnxSpeakerService _service;
     private readonly string _tmpDir;
 
     public SherpaOnnxSpeakerServiceTests()
     {
-        var options = new DbContextOptionsBuilder<VoxMindDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
-        _db = new VoxMindDbContext(options);
+        _dbFactory = new TestDbContextFactory();
 
         _tmpDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(_tmpDir);
@@ -32,7 +27,7 @@ public class SherpaOnnxSpeakerServiceTests : IDisposable
             SherpaOnnx = new SherpaOnnxConfig { EmbeddingModelPath = "nonexistent.onnx" }
         };
         _service = new SherpaOnnxSpeakerService(
-            config, _db,
+            config, _dbFactory,
             NullLogger<SherpaOnnxSpeakerService>.Instance,
             embeddingsDir: _tmpDir
         );
@@ -84,7 +79,6 @@ public class SherpaOnnxSpeakerServiceTests : IDisposable
     public void Dispose()
     {
         _service.Dispose();
-        _db.Dispose();
         if (Directory.Exists(_tmpDir))
             Directory.Delete(_tmpDir, recursive: true);
     }

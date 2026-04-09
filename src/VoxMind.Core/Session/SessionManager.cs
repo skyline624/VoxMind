@@ -16,7 +16,7 @@ public class SessionManager : ISessionManager
     private readonly ITranscriptionService _transcriptionService;
     private readonly ISpeakerIdentificationService _speakerService;
     private readonly ISummaryGenerator _summaryGenerator;
-    private readonly VoxMindDbContext _db;
+    private readonly IDbContextFactory<VoxMindDbContext> _dbFactory;
     private readonly ILogger<SessionManager> _logger;
     private readonly string _sessionsOutputFolder;
 
@@ -46,7 +46,7 @@ public class SessionManager : ISessionManager
         ITranscriptionService transcriptionService,
         ISpeakerIdentificationService speakerService,
         ISummaryGenerator summaryGenerator,
-        VoxMindDbContext db,
+        IDbContextFactory<VoxMindDbContext> dbFactory,
         ILogger<SessionManager> logger,
         string sessionsOutputFolder = "/home/pc/voice_data/sessions",
         AudioSourceFactory? audioSourceFactory = null)
@@ -57,17 +57,42 @@ public class SessionManager : ISessionManager
         _transcriptionService = transcriptionService;
         _speakerService = speakerService;
         _summaryGenerator = summaryGenerator;
-        _db = db;
+        _dbFactory = dbFactory;
         _logger = logger;
         _sessionsOutputFolder = sessionsOutputFolder;
         Directory.CreateDirectory(sessionsOutputFolder);
     }
 
-    public async Task<ListeningSession> StartSessionAsync(
+    public Task<ListeningSession> StartSessionAsync(
         string? name = null,
         string sourceType = "live",
         string? sourcePath = null,
         CancellationToken ct = default)
+        => InitializeSessionAsync(
+            name ?? $"session_{DateTime.Now:yyyyMMdd_HHmmss}",
+            isRemote: false,
+            sourceType: sourceType,
+            sourcePath: sourcePath,
+            ct: ct);
+
+    public Task<ListeningSession> StartRemoteListeningAsync(string? name = null, CancellationToken ct = default)
+        => InitializeSessionAsync(
+            name ?? $"remote_{DateTime.Now:yyyyMMdd_HHmmss}",
+            isRemote: true,
+            sourceType: "live",
+            sourcePath: null,
+            ct: ct);
+
+    /// <summary>
+    /// Démarrage commun (local + remote) — élimine la duplication entre StartSessionAsync et
+    /// StartRemoteListeningAsync. Persiste la session, initialise le channel et démarre la pipeline.
+    /// </summary>
+    private async Task<ListeningSession> InitializeSessionAsync(
+        string name,
+        bool isRemote,
+        string sourceType,
+        string? sourcePath,
+        CancellationToken ct)
     {
         if (_status != SessionStatus.Idle)
             throw new InvalidOperationException($"Impossible de démarrer : session déjà en cours ({_status}).");
@@ -75,28 +100,31 @@ public class SessionManager : ISessionManager
         var session = new ListeningSession
         {
             Id = Guid.NewGuid(),
-            Name = name ?? $"session_{DateTime.Now:yyyyMMdd_HHmmss}",
+            Name = name,
             StartedAt = DateTime.UtcNow,
             Status = SessionStatus.Listening
         };
 
-        // Persister en DB
-        _db.ListeningSessions.Add(new ListeningSessionEntity
+        // Persister en DB via une instance dédiée (DbContext non thread-safe)
+        await using (var db = await _dbFactory.CreateDbContextAsync(ct))
         {
-            Id = session.Id,
-            Name = session.Name,
-            StartedAt = session.StartedAt,
-            Status = "active"
-        });
-        await _db.SaveChangesAsync(ct);
+            db.ListeningSessions.Add(new ListeningSessionEntity
+            {
+                Id = session.Id,
+                Name = session.Name,
+                StartedAt = session.StartedAt,
+                Status = "active"
+            });
+            await db.SaveChangesAsync(ct);
+        }
 
-        _currentSession = session;
-        _currentSegments.Clear();
-        _status = SessionStatus.Listening;
-        _isRemoteSession = false;
-
-        // Sélectionner la source audio (live = micro, file = décodage FFmpeg)
-        _activeCapture = _audioSourceFactory?.Create(sourceType, sourcePath) ?? _audioCapture;
+        lock (_lock)
+        {
+            _currentSession = session;
+            _currentSegments.Clear();
+            _status = SessionStatus.Listening;
+            _isRemoteSession = isRemote;
+        }
 
         // Canal de chunks audio (capacité bornée : 100 chunks = ~10s à 100ms/chunk)
         _audioChannel = Channel.CreateBounded<AudioChunk>(new BoundedChannelOptions(100)
@@ -108,62 +136,35 @@ public class SessionManager : ISessionManager
         _processingCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _processingTask = ProcessAudioChannelAsync(_processingCts.Token);
 
-        // S'abonner à la capture audio
-        _activeCapture.AudioChunkReceived += OnAudioChunkReceived;
-        if (!_activeCapture.IsLive && _activeCapture is FileAudioSource fileSource)
-            fileSource.PlaybackCompleted += OnPlaybackCompleted;
-
-        var config = new AudioConfiguration();
-        await _activeCapture.StartCaptureAsync(config, ct);
-
-        // Timer de résumés intermédiaires toutes les 5 minutes
-        _summaryTimer = new Timer(_ => GenerateIntermediateSummary(), null,
-            TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
-
-        _logger.LogInformation("Session '{Name}' (ID={Id}) démarrée (source: {Source}).",
-            session.Name, session.Id, sourceType);
-        return session;
-    }
-
-    public async Task<ListeningSession> StartRemoteListeningAsync(string? name = null, CancellationToken ct = default)
-    {
-        if (_status != SessionStatus.Idle)
-            throw new InvalidOperationException($"Impossible de démarrer : session déjà en cours ({_status}).");
-
-        var session = new ListeningSession
+        if (!isRemote)
         {
-            Id = Guid.NewGuid(),
-            Name = name ?? $"remote_{DateTime.Now:yyyyMMdd_HHmmss}",
-            StartedAt = DateTime.UtcNow,
-            Status = SessionStatus.Listening
-        };
+            // Sélectionner la source audio (live = micro, file = décodage FFmpeg)
+            _activeCapture = _audioSourceFactory?.Create(sourceType, sourcePath) ?? _audioCapture;
 
-        _db.ListeningSessions.Add(new ListeningSessionEntity
+            // S'abonner à la capture audio
+            _activeCapture.AudioChunkReceived += OnAudioChunkReceived;
+            if (!_activeCapture.IsLive && _activeCapture is FileAudioSource fileSource)
+                fileSource.PlaybackCompleted += OnPlaybackCompleted;
+
+            var config = new AudioConfiguration();
+            await _activeCapture.StartCaptureAsync(config, ct);
+        }
+
+        // Timer de résumés intermédiaires toutes les 5 minutes (fire-and-forget sécurisé)
+        _summaryTimer = new Timer(_ =>
         {
-            Id = session.Id,
-            Name = session.Name,
-            StartedAt = session.StartedAt,
-            Status = "active"
-        });
-        await _db.SaveChangesAsync(ct);
+            _ = Task.Run(async () =>
+            {
+                try { await GenerateIntermediateSummaryAsync(); }
+                catch (Exception ex) { _logger.LogError(ex, "Erreur lors de la génération du résumé intermédiaire."); }
+            });
+        }, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
 
-        _currentSession = session;
-        _currentSegments.Clear();
-        _status = SessionStatus.Listening;
-        _isRemoteSession = true;
-
-        _audioChannel = Channel.CreateBounded<AudioChunk>(new BoundedChannelOptions(100)
-        {
-            FullMode = BoundedChannelFullMode.DropOldest
-        });
-
-        _processingCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        _processingTask = ProcessAudioChannelAsync(_processingCts.Token);
-
-        _summaryTimer = new Timer(_ => GenerateIntermediateSummary(), null,
-            TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
-
-        _logger.LogInformation("Session distante '{Name}' (ID={Id}) démarrée.", session.Name, session.Id);
+        if (isRemote)
+            _logger.LogInformation("Session distante '{Name}' (ID={Id}) démarrée.", session.Name, session.Id);
+        else
+            _logger.LogInformation("Session '{Name}' (ID={Id}) démarrée (source: {Source}).",
+                session.Name, session.Id, sourceType);
         return session;
     }
 
@@ -205,18 +206,22 @@ public class SessionManager : ISessionManager
         _currentSession.EndedAt = DateTime.UtcNow;
         _currentSession.Status = SessionStatus.Idle;
 
-        // Générer le résumé final
-        var segments = _currentSegments.ToList();
+        // Générer le résumé final (snapshot des segments sous lock — race avec ProcessChunkAsync)
+        List<SessionSegment> segments;
+        lock (_lock) { segments = _currentSegments.ToList(); }
         var summary = await _summaryGenerator.GenerateAsync(_currentSession, segments);
         _currentSession.Summary = summary;
 
-        // Sauvegarder en DB
-        var entity = await _db.ListeningSessions.FindAsync(_currentSession.Id);
-        if (entity is not null)
+        // Sauvegarder en DB via instance dédiée (DbContext non thread-safe)
+        await using (var db = await _dbFactory.CreateDbContextAsync())
         {
-            entity.EndedAt = _currentSession.EndedAt;
-            entity.Status = "completed";
-            await _db.SaveChangesAsync();
+            var entity = await db.ListeningSessions.FindAsync(_currentSession.Id);
+            if (entity is not null)
+            {
+                entity.EndedAt = _currentSession.EndedAt;
+                entity.Status = "completed";
+                await db.SaveChangesAsync();
+            }
         }
 
         // Sauvegarder le JSON de session
@@ -338,25 +343,33 @@ public class SessionManager : ISessionManager
             Confidence = transcription.Confidence
         };
 
-        // Enregistrer en DB
-        _db.SessionSegments.Add(new SessionSegmentEntity
+        // Enregistrer en DB via instance dédiée (DbContext non thread-safe — créé par chunk)
+        await using (var db = await _dbFactory.CreateDbContextAsync(ct))
         {
-            Id = segment.Id,
-            SessionId = segment.SessionId,
-            SpeakerId = segment.SpeakerId,
-            StartTime = segment.StartSeconds,
-            EndTime = segment.EndSeconds,
-            Transcript = segment.Text,
-            Confidence = segment.Confidence
-        });
-        await _db.SaveChangesAsync(ct);
+            db.SessionSegments.Add(new SessionSegmentEntity
+            {
+                Id = segment.Id,
+                SessionId = segment.SessionId,
+                SpeakerId = segment.SpeakerId,
+                StartTime = segment.StartSeconds,
+                EndTime = segment.EndSeconds,
+                Transcript = segment.Text,
+                Confidence = segment.Confidence
+            });
+            await db.SaveChangesAsync(ct);
+        }
 
-        _currentSegments.Add(segment);
-        _currentSession.SegmentCount++;
+        // Mutations partagées sous lock — ProcessAudioChannelAsync tourne sur un thread dédié,
+        // mais StopSessionAsync, GenerateIntermediateSummaryAsync et le Timer peuvent lire en parallèle.
+        lock (_lock)
+        {
+            _currentSegments.Add(segment);
+            _currentSession.SegmentCount++;
 
-        // Ajouter le participant si nouveau
-        if (identification?.ProfileId.HasValue == true && !_currentSession.ParticipantIds.Contains(identification.ProfileId.Value))
-            _currentSession.ParticipantIds.Add(identification.ProfileId.Value);
+            // Ajouter le participant si nouveau
+            if (identification?.ProfileId.HasValue == true && !_currentSession.ParticipantIds.Contains(identification.ProfileId.Value))
+                _currentSession.ParticipantIds.Add(identification.ProfileId.Value);
+        }
 
         // Déclencher l'événement
         SegmentProcessed?.Invoke(this, new SegmentProcessedEventArgs
@@ -376,25 +389,26 @@ public class SessionManager : ISessionManager
         });
     }
 
-    private async void GenerateIntermediateSummary()
+    private async Task GenerateIntermediateSummaryAsync()
     {
-        if (_currentSession is null || !_currentSegments.Any()) return;
+        ListeningSession? sessionSnapshot;
+        List<SessionSegment> segmentsSnapshot;
+        lock (_lock)
+        {
+            if (_currentSession is null || _currentSegments.Count == 0) return;
+            sessionSnapshot = _currentSession;
+            segmentsSnapshot = _currentSegments.ToList();
+        }
+
         _logger.LogInformation("Génération du résumé intermédiaire...");
-        try
+        var summary = await _summaryGenerator.GenerateAsync(sessionSnapshot, segmentsSnapshot);
+        lock (_lock)
         {
-            var summary = await _summaryGenerator.GenerateAsync(
-                _currentSession,
-                _currentSegments.ToList());
-            lock (_lock)
-            {
+            // _currentSession peut avoir été remplacé pendant l'await — ne pas écraser une autre session
+            if (_currentSession is not null && _currentSession.Id == sessionSnapshot.Id)
                 _currentSession.Summary = summary;
-            }
-            _logger.LogInformation("Résumé intermédiaire généré pour session {Id}", _currentSession.Id);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Erreur lors de la génération du résumé intermédiaire");
-        }
+        _logger.LogInformation("Résumé intermédiaire généré pour session {Id}", sessionSnapshot.Id);
     }
 
     private async Task SaveSessionJsonAsync(ListeningSession session, List<SessionSegment> segments)

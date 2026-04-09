@@ -211,6 +211,12 @@ public class ApiConfig
 {
     public int Port { get; set; } = 8000;
     public bool EnableSwagger { get; set; } = true;
+
+    /// <summary>
+    /// API key required in the X-Api-Key header. If null/empty, authentication is disabled
+    /// (a warning is logged at startup). Override via voice_data/config/config.json.
+    /// </summary>
+    public string? ApiKey { get; set; }
 }
 
 public class RemoteClientsConfig

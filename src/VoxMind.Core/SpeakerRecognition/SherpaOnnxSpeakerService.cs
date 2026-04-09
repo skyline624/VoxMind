@@ -17,7 +17,7 @@ namespace VoxMind.Core.SpeakerRecognition;
 /// </summary>
 public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
 {
-    private readonly VoxMindDbContext _db;
+    private readonly IDbContextFactory<VoxMindDbContext> _dbFactory;
     private readonly ILogger<SherpaOnnxSpeakerService> _logger;
     private readonly float _confidenceThreshold;
     private readonly float _clusteringThreshold;
@@ -30,11 +30,11 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
 
     public SherpaOnnxSpeakerService(
         SpeakerRecognitionConfig config,
-        VoxMindDbContext db,
+        IDbContextFactory<VoxMindDbContext> dbFactory,
         ILogger<SherpaOnnxSpeakerService> logger,
         string embeddingsDir = "/home/pc/voice_data/embeddings")
     {
-        _db = db;
+        _dbFactory = dbFactory;
         _logger = logger;
         _confidenceThreshold = config.ConfidenceThreshold;
         _clusteringThreshold = config.SherpaOnnx.ClusteringThreshold;
@@ -70,7 +70,8 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
     /// <summary>Charge tous les embeddings actifs en mémoire (parallèle, max 4 lectures simultanées).</summary>
     public async Task InitializeAsync()
     {
-        var embeddings = await _db.SpeakerEmbeddings
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var embeddings = await db.SpeakerEmbeddings
             .Include(e => e.Profile)
             .Where(e => e.Profile.IsActive)
             .ToListAsync();
@@ -175,7 +176,8 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
 
         if (bestSimilarity >= _confidenceThreshold && bestProfileId.HasValue)
         {
-            var profile = await _db.SpeakerProfiles.FindAsync(bestProfileId.Value);
+            await using var db = await _dbFactory.CreateDbContextAsync();
+            var profile = await db.SpeakerProfiles.FindAsync(bestProfileId.Value);
             return new SpeakerIdentificationResult(true, bestProfileId, profile?.Name, bestSimilarity, _confidenceThreshold);
         }
 
@@ -191,11 +193,14 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
         var bytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(embedding.AsSpan()).ToArray();
         await File.WriteAllBytesAsync(filePath, bytes);
 
-        _db.SpeakerProfiles.Add(new SpeakerProfileEntity { Id = profileId, Name = name, CreatedAt = DateTime.UtcNow, IsActive = true });
-        _db.SpeakerEmbeddings.Add(new SpeakerEmbeddingEntity { Id = embeddingId, ProfileId = profileId, FilePath = filePath, CapturedAt = DateTime.UtcNow, InitialConfidence = initialConfidence, AudioDurationSeconds = audioDurationSeconds });
-        await _db.SaveChangesAsync();
+        await using (var db = await _dbFactory.CreateDbContextAsync())
+        {
+            db.SpeakerProfiles.Add(new SpeakerProfileEntity { Id = profileId, Name = name, CreatedAt = DateTime.UtcNow, IsActive = true });
+            db.SpeakerEmbeddings.Add(new SpeakerEmbeddingEntity { Id = embeddingId, ProfileId = profileId, FilePath = filePath, CapturedAt = DateTime.UtcNow, InitialConfidence = initialConfidence, AudioDurationSeconds = audioDurationSeconds });
+            await db.SaveChangesAsync();
+        }
 
-        lock (_cacheLock) { _embeddingCache[profileId] = new List<float[]> { embedding }; }
+        AddToCache(profileId, embedding);
         _logger.LogInformation("Locuteur '{Name}' (ID={Id}) enregistré.", name, profileId);
 
         return new SpeakerProfile { Id = profileId, Name = name, CreatedAt = DateTime.UtcNow, IsActive = true };
@@ -209,43 +214,51 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
         var bytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(embedding.AsSpan()).ToArray();
         await File.WriteAllBytesAsync(filePath, bytes);
 
-        _db.SpeakerEmbeddings.Add(new SpeakerEmbeddingEntity { Id = embeddingId, ProfileId = profileId, FilePath = filePath, CapturedAt = DateTime.UtcNow, InitialConfidence = confidence });
-        await _db.SaveChangesAsync();
-
-        lock (_cacheLock)
+        await using (var db = await _dbFactory.CreateDbContextAsync())
         {
-            if (!_embeddingCache.ContainsKey(profileId)) _embeddingCache[profileId] = new List<float[]>();
-            _embeddingCache[profileId].Add(embedding);
+            db.SpeakerEmbeddings.Add(new SpeakerEmbeddingEntity { Id = embeddingId, ProfileId = profileId, FilePath = filePath, CapturedAt = DateTime.UtcNow, InitialConfidence = confidence });
+            await db.SaveChangesAsync();
         }
+
+        AddToCache(profileId, embedding);
     }
 
     public async Task<SpeakerProfile?> GetProfileAsync(Guid profileId)
     {
-        var e = await _db.SpeakerProfiles.Include(p => p.Embeddings).FirstOrDefaultAsync(p => p.Id == profileId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var e = await db.SpeakerProfiles.Include(p => p.Embeddings).FirstOrDefaultAsync(p => p.Id == profileId);
         return e is null ? null : MapToProfile(e);
     }
 
     public async Task<IReadOnlyList<SpeakerProfile>> GetAllProfilesAsync()
     {
-        var entities = await _db.SpeakerProfiles.Include(p => p.Embeddings).Where(p => p.IsActive).ToListAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var entities = await db.SpeakerProfiles.Include(p => p.Embeddings).Where(p => p.IsActive).ToListAsync();
         return entities.Select(MapToProfile).ToList();
     }
 
     public async Task MergeProfilesAsync(Guid targetProfileId, Guid sourceProfileId)
     {
-        var sourceEmbs = await _db.SpeakerEmbeddings.Where(e => e.ProfileId == sourceProfileId).ToListAsync();
-        foreach (var emb in sourceEmbs) emb.ProfileId = targetProfileId;
+        await using (var db = await _dbFactory.CreateDbContextAsync())
+        {
+            var sourceEmbs = await db.SpeakerEmbeddings.Where(e => e.ProfileId == sourceProfileId).ToListAsync();
+            foreach (var emb in sourceEmbs) emb.ProfileId = targetProfileId;
 
-        var source = await _db.SpeakerProfiles.FindAsync(sourceProfileId);
-        if (source is not null) _db.SpeakerProfiles.Remove(source);
-        await _db.SaveChangesAsync();
+            var source = await db.SpeakerProfiles.FindAsync(sourceProfileId);
+            if (source is not null) db.SpeakerProfiles.Remove(source);
+            await db.SaveChangesAsync();
+        }
 
         lock (_cacheLock)
         {
             if (_embeddingCache.TryGetValue(sourceProfileId, out var vecs))
             {
-                if (!_embeddingCache.ContainsKey(targetProfileId)) _embeddingCache[targetProfileId] = new List<float[]>();
-                _embeddingCache[targetProfileId].AddRange(vecs);
+                if (!_embeddingCache.TryGetValue(targetProfileId, out var target))
+                {
+                    target = new List<float[]>();
+                    _embeddingCache[targetProfileId] = target;
+                }
+                target.AddRange(vecs);
                 _embeddingCache.Remove(sourceProfileId);
             }
         }
@@ -253,46 +266,57 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
 
     public async Task RenameProfileAsync(Guid profileId, string newName)
     {
-        var profile = await _db.SpeakerProfiles.FindAsync(profileId)
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var profile = await db.SpeakerProfiles.FindAsync(profileId)
             ?? throw new KeyNotFoundException($"Profil {profileId} introuvable.");
         profile.Name = newName;
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
     }
 
     public async Task DeleteProfileAsync(Guid profileId)
     {
-        var profile = await _db.SpeakerProfiles.Include(p => p.Embeddings).FirstOrDefaultAsync(p => p.Id == profileId);
-        if (profile is null) return;
-        foreach (var emb in profile.Embeddings)
-            if (File.Exists(emb.FilePath)) File.Delete(emb.FilePath);
-        _db.SpeakerProfiles.Remove(profile);
-        await _db.SaveChangesAsync();
+        await using (var db = await _dbFactory.CreateDbContextAsync())
+        {
+            var profile = await db.SpeakerProfiles.Include(p => p.Embeddings).FirstOrDefaultAsync(p => p.Id == profileId);
+            if (profile is null) return;
+            foreach (var emb in profile.Embeddings)
+                if (File.Exists(emb.FilePath)) File.Delete(emb.FilePath);
+            db.SpeakerProfiles.Remove(profile);
+            await db.SaveChangesAsync();
+        }
         lock (_cacheLock) { _embeddingCache.Remove(profileId); }
     }
 
     public async Task LinkSpeakersAsync(Guid knownProfileId, Guid unknownProfileId)
     {
-        var known = await _db.SpeakerProfiles.FindAsync(knownProfileId)
-            ?? throw new KeyNotFoundException($"Profil connu {knownProfileId} introuvable.");
-        var unknown = await _db.SpeakerProfiles.Include(p => p.Embeddings).FirstOrDefaultAsync(p => p.Id == unknownProfileId)
-            ?? throw new KeyNotFoundException($"Profil inconnu {unknownProfileId} introuvable.");
+        await using (var db = await _dbFactory.CreateDbContextAsync())
+        {
+            var known = await db.SpeakerProfiles.FindAsync(knownProfileId)
+                ?? throw new KeyNotFoundException($"Profil connu {knownProfileId} introuvable.");
+            var unknown = await db.SpeakerProfiles.Include(p => p.Embeddings).FirstOrDefaultAsync(p => p.Id == unknownProfileId)
+                ?? throw new KeyNotFoundException($"Profil inconnu {unknownProfileId} introuvable.");
 
-        var aliases = string.IsNullOrEmpty(known.AliasesJson)
-            ? new List<string>()
-            : JsonSerializer.Deserialize<List<string>>(known.AliasesJson) ?? new();
-        if (!aliases.Contains(unknown.Name)) { aliases.Add(unknown.Name); known.AliasesJson = JsonSerializer.Serialize(aliases); }
+            var aliases = string.IsNullOrEmpty(known.AliasesJson)
+                ? new List<string>()
+                : JsonSerializer.Deserialize<List<string>>(known.AliasesJson) ?? new();
+            if (!aliases.Contains(unknown.Name)) { aliases.Add(unknown.Name); known.AliasesJson = JsonSerializer.Serialize(aliases); }
 
-        var unknownEmbs = await _db.SpeakerEmbeddings.Where(e => e.ProfileId == unknownProfileId).ToListAsync();
-        foreach (var emb in unknownEmbs) emb.ProfileId = knownProfileId;
-        _db.SpeakerProfiles.Remove(unknown);
-        await _db.SaveChangesAsync();
+            var unknownEmbs = await db.SpeakerEmbeddings.Where(e => e.ProfileId == unknownProfileId).ToListAsync();
+            foreach (var emb in unknownEmbs) emb.ProfileId = knownProfileId;
+            db.SpeakerProfiles.Remove(unknown);
+            await db.SaveChangesAsync();
+        }
 
         lock (_cacheLock)
         {
             if (_embeddingCache.TryGetValue(unknownProfileId, out var vecs))
             {
-                if (!_embeddingCache.ContainsKey(knownProfileId)) _embeddingCache[knownProfileId] = new();
-                _embeddingCache[knownProfileId].AddRange(vecs);
+                if (!_embeddingCache.TryGetValue(knownProfileId, out var target))
+                {
+                    target = new List<float[]>();
+                    _embeddingCache[knownProfileId] = target;
+                }
+                target.AddRange(vecs);
                 _embeddingCache.Remove(unknownProfileId);
             }
         }
@@ -300,11 +324,26 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
 
     public async Task UpdateLastSeenAsync(Guid profileId)
     {
-        var profile = await _db.SpeakerProfiles.FindAsync(profileId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var profile = await db.SpeakerProfiles.FindAsync(profileId);
         if (profile is null) return;
         profile.LastSeenAt = DateTime.UtcNow;
         profile.DetectionCount++;
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Helper interne : ajoute un embedding au cache thread-safe (DRY pour Enroll/Add/Merge/Link).</summary>
+    private void AddToCache(Guid profileId, float[] embedding)
+    {
+        lock (_cacheLock)
+        {
+            if (!_embeddingCache.TryGetValue(profileId, out var list))
+            {
+                list = new List<float[]>();
+                _embeddingCache[profileId] = list;
+            }
+            list.Add(embedding);
+        }
     }
 
     public Task<float[]?> ExtractEmbeddingAsync(byte[] audioData, CancellationToken ct = default)
@@ -433,7 +472,11 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
         }
 
         // ── 4. Matcher chaque cluster contre les profils connus ou créer un nouveau ──
-        int autoCount = await _db.SpeakerProfiles.CountAsync(p => p.IsActive, ct);
+        int autoCount;
+        await using (var db = await _dbFactory.CreateDbContextAsync(ct))
+        {
+            autoCount = await db.SpeakerProfiles.CountAsync(p => p.IsActive, ct);
+        }
 
         for (int c = 0; c < clusters.Count; c++)
         {
