@@ -15,6 +15,10 @@ public class TranscriptionResult
     /// <summary>Segments VAD bruts (samples PCM) — non sérialisés, utilisés pour la diarisation.</summary>
     [JsonIgnore]
     public IReadOnlyList<VadSegment>? VadSegments { get; set; }
+
+    /// <summary>Audio source complet en PCM float32 16 kHz mono — non sérialisé, requis par OfflineSpeakerDiarization.</summary>
+    [JsonIgnore]
+    public float[]? AudioSamples { get; set; }
 }
 
 public class TranscriptionSegment

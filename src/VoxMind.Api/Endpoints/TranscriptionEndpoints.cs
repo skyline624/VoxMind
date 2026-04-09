@@ -66,11 +66,15 @@ public static class TranscriptionEndpoints
             var transcription = await engine.TranscribeFileAsync(tempPath, ct);
 
             // ── Diarisation automatique (best-effort) ────────────────────────────
-            if (transcription.VadSegments is { Count: > 0 })
+            if (transcription.VadSegments is { Count: > 0 } && transcription.AudioSamples is { Length: > 0 })
             {
                 try
                 {
-                    var speakerMap = await speakerSvc.DiarizeSegmentsAsync(transcription.VadSegments, ct, numSpeakers);
+                    var speakerMap = await speakerSvc.DiarizeAudioAsync(
+                        transcription.AudioSamples,
+                        transcription.VadSegments,
+                        ct,
+                        numSpeakers);
                     foreach (var seg in transcription.Segments)
                     {
                         if (speakerMap.TryGetValue(seg.Id, out var label))
