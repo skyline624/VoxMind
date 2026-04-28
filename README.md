@@ -4,7 +4,8 @@ Système local de transcription vocale en temps réel avec identification automa
 
 ## Fonctionnalités
 
-- Transcription vocale temps réel (Parakeet TDT ONNX — 100% local, sans Python)
+- Transcription vocale temps réel multilingue (Parakeet TDT ONNX v3 — 25 langues européennes, détection de langue automatique, 100% local sans Python)
+- Synthèse vocale avec voice cloning (F5-TTS-ONNX — FR + EN, 100% local sans Python)
 - Identification des locuteurs (sherpa-onnx — 100% local, sans Python)
 - Mode écoute continu avec résumés automatiques
 - Communication externe via bridge JSON file-based (Cortana/OpenClaw)
@@ -46,6 +47,7 @@ dotnet run --project src/VoxMind.CLI
 ./voxmind status                   # Statut en cours
 ./voxmind stop                     # Arrêter et générer le résumé
 ./voxmind transcribe audio.wav     # Transcrire un fichier
+./voxmind speak "Bonjour" -l fr -o out.wav   # Synthétiser un texte (TTS)
 ./voxmind enroll "Marjorie"        # Enregistrer une voix
 ./voxmind list-speakers            # Voir les profils
 ```
@@ -55,7 +57,9 @@ dotnet run --project src/VoxMind.CLI
 ```
 VoxMind (C# .NET 8) — 100% local, sans Python
         │
-   ParakeetOnnxTranscriptionService   (Microsoft.ML.OnnxRuntime)
+   ParakeetOnnxTranscriptionService   (Microsoft.ML.OnnxRuntime, multilingue 25 langues)
+   StopwordLanguageDetector           (post-hoc text-based, 25 langues)
+   F5TtsOnnxService                   (Microsoft.ML.OnnxRuntime, FR + EN voice cloning)
    SherpaOnnxSpeakerService           (org.k2fsa.sherpa.onnx)
    SessionManager
    FileBridge (JSON)
@@ -86,6 +90,48 @@ Configurer le chemin du modèle dans `appsettings.json` :
   }
 }
 ```
+
+## Synthèse vocale (TTS)
+
+Moteur principal : **F5-TTS-ONNX** ([port DakeQQ](https://github.com/DakeQQ/F5-TTS-ONNX) du modèle [SWivid/F5-TTS](https://github.com/SWivid/F5-TTS)), inférence locale via `Microsoft.ML.OnnxRuntime`.
+
+Caractéristiques :
+- Voice cloning zero-shot par audio de référence (~5 s suffisent).
+- Un fine-tune par langue. v1 : **FR** ([RASPIAUDIO/F5-French-MixedSpeakers-reduced](https://huggingface.co/RASPIAUDIO/F5-French-MixedSpeakers-reduced)) + **EN** (base SWivid).
+- Cache LRU multi-langue : FR + EN gardés chauds en mémoire (~3 GB), autres langues chargées à la demande.
+- Sortie WAV 24 kHz mono PCM 16 bits.
+
+Endpoints API :
+- `POST /v1/audio/speech` (compatible OpenAI) — JSON in, WAV out.
+- `GET /v1/voices` — liste des moteurs et langues disponibles.
+
+Exemple `curl` :
+```bash
+curl -X POST http://localhost:8000/v1/audio/speech \
+  -H "X-Api-Key: $API_KEY" -H "Content-Type: application/json" \
+  -d '{"input":"Bonjour, je suis prête.","language":"fr"}' \
+  -o /tmp/fr.wav
+```
+
+Si `language` est absent, la langue est détectée automatiquement depuis le texte (FR/EN).
+
+Configurer dans `appsettings.json` :
+```json
+"Ml": {
+  "Tts": {
+    "Enabled": true,
+    "DefaultLanguage": "fr",
+    "CacheCapacity": 2,
+    "FlowMatchingSteps": 32,
+    "Languages": {
+      "fr": { "PreprocessModelPath": "./models/f5-tts/fr/F5_Preprocess.onnx", "...": "..." },
+      "en": { "PreprocessModelPath": "./models/f5-tts/en/F5_Preprocess.onnx", "...": "..." }
+    }
+  }
+}
+```
+
+Pour exporter les checkpoints F5-TTS au format ONNX (one-shot, Python), voir [docs/F5TtsExport.md](docs/F5TtsExport.md).
 
 ## Identification des Locuteurs
 

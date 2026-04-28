@@ -18,11 +18,21 @@ public class ParakeetTranscriptionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task DetectLanguage_AlwaysReturnsEn()
+    public async Task DetectLanguage_OnEmptyBytes_ReturnsUnd()
     {
         var result = await _service.DetectLanguageAsync(Array.Empty<byte>());
 
-        Assert.Equal("en", result);
+        Assert.Equal("und", result);
+    }
+
+    [Fact]
+    public async Task DetectLanguage_WhenModelNotLoaded_ReturnsUnd()
+    {
+        // Sans modèle, TranscribeChunk renvoie un texte vide ; le détecteur
+        // tombe sur "und" (texte non analysable). Le service doit propager.
+        var result = await _service.DetectLanguageAsync(new byte[100]);
+
+        Assert.Equal("und", result);
     }
 
     [Fact]

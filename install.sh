@@ -113,6 +113,41 @@ else
     echo "  3DSpeaker déjà présent."
 fi
 
+# 5b. F5-TTS (synthèse vocale) — facultatif
+# Pas de checkpoints publics tout-prêts pour FR ; voir docs/F5TtsExport.md pour
+# la procédure d'export Python (one-shot). On crée juste les répertoires
+# attendus pour que le service démarre en graceful degradation.
+F5_DIR="$MODELS_DIR/f5-tts"
+if [ ! -d "$F5_DIR" ]; then
+    echo ""
+    echo "F5-TTS : création de l'arborescence (modèles à exporter via docs/F5TtsExport.md)..."
+    mkdir -p "$F5_DIR/fr" "$F5_DIR/en"
+    cat > "$F5_DIR/README.md" << 'EOF'
+# F5-TTS checkpoints
+
+Ce dossier doit contenir les checkpoints F5-TTS-ONNX par langue :
+
+```
+fr/
+  ├─ F5_Preprocess.onnx
+  ├─ F5_Transformer.onnx
+  ├─ F5_Decode.onnx
+  ├─ tokens.txt
+  └─ reference.wav
+en/
+  ├─ F5_Preprocess.onnx
+  ├─ ... (idem)
+```
+
+Procédure d'export depuis les checkpoints PyTorch communautaires :
+voir [`docs/F5TtsExport.md`](../../docs/F5TtsExport.md) à la racine du repo.
+
+Tant que ces fichiers ne sont pas présents, l'API `/v1/audio/speech` répond
+HTTP 503 avec un message explicatif et la commande `voxmind speak` exit 13.
+EOF
+    echo "  Arborescence F5-TTS créée. Suivre docs/F5TtsExport.md pour exporter les modèles."
+fi
+
 # 6. Build .NET
 echo ""
 echo "Build du projet .NET..."
@@ -130,6 +165,7 @@ echo ""
 echo "Structure créée :"
 echo "  - $MODELS_DIR/parakeet-tdt-0.6b-v3-int8/"
 echo "  - $MODELS_DIR/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
+echo "  - $MODELS_DIR/f5-tts/{fr,en}/  (à remplir via docs/F5TtsExport.md)"
 echo "  - $VOICE_DATA_DIR/{profiles,sessions,shared,logs,config}"
 echo ""
 echo "Démarrer VoxMind :"

@@ -6,6 +6,7 @@ using VoxMind.Core.Database;
 using VoxMind.Core.Session;
 using VoxMind.Core.SpeakerRecognition;
 using VoxMind.Core.Transcription;
+using VoxMind.Core.Tts;
 using VoxMind.Core.Vad;
 using System.Runtime.InteropServices;
 
@@ -42,12 +43,22 @@ public static class ServiceCollectionExtensions
         else
             services.AddSingleton<IVadService, DisabledVadService>();
 
+        // Détecteur de langue post-hoc (NTextCat-style stopwords pour les 25 langues
+        // supportées par Parakeet v3). Utilisé aussi côté TTS pour borner la synthèse
+        // quand la requête API ne précise pas la langue cible.
+        services.AddSingleton<ILanguageDetector>(sp =>
+            new StopwordLanguageDetector(
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<StopwordLanguageDetector>>()
+            )
+        );
+
         // Moteur Parakeet ONNX (local, sans serveur Python)
         services.AddSingleton<ITranscriptionService>(sp =>
             new ParakeetOnnxTranscriptionService(
                 config.Ml.Transcription.ParakeetModelPath,
                 sp.GetRequiredService<IVadService>(),
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ParakeetOnnxTranscriptionService>>()
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ParakeetOnnxTranscriptionService>>(),
+                sp.GetRequiredService<ILanguageDetector>()
             )
         );
 
@@ -70,6 +81,41 @@ public static class ServiceCollectionExtensions
                 defaultModel: config.Ml.Transcription.DefaultModel
             )
         );
+
+        // ── Synthèse vocale (TTS) ──────────────────────────────────────────────
+        // F5-TTS-ONNX : moteur principal, fine-tunes par langue, voice cloning zero-shot.
+        if (config.Ml.Tts.Enabled)
+        {
+            services.AddSingleton<F5TtsOnnxService>(sp =>
+                new F5TtsOnnxService(
+                    config.Ml.Tts,
+                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<F5TtsOnnxService>>()
+                )
+            );
+
+            // Coqui XTTS-v2 — stub (pas d'export ONNX officiel ; pattern d'extension futur).
+            services.AddSingleton<CoquiXttsTtsService>(sp =>
+                new CoquiXttsTtsService(
+                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CoquiXttsTtsService>>()
+                )
+            );
+
+            // Registry multi-engine. Ajouter une entrée ici pour brancher Zipvoice / Piper / etc.
+            services.AddSingleton<TtsEngineRegistry>(sp =>
+                new TtsEngineRegistry(
+                    new Dictionary<string, ITtsService>
+                    {
+                        ["f5"] = sp.GetRequiredService<F5TtsOnnxService>(),
+                        ["xtts"] = sp.GetRequiredService<CoquiXttsTtsService>(),
+                    },
+                    defaultEngine: config.Ml.Tts.DefaultEngine
+                )
+            );
+
+            // Façade <see cref="ITtsService"/> = le moteur par défaut, pratique pour la CLI.
+            services.AddSingleton<ITtsService>(sp =>
+                sp.GetRequiredService<TtsEngineRegistry>().Get(config.Ml.Tts.DefaultEngine));
+        }
 
         // Speaker recognition — sherpa-onnx (local, sans serveur Python)
         services.AddSingleton<ISpeakerIdentificationService>(sp =>

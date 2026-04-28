@@ -140,6 +140,8 @@ try
     app.MapSpeakerEndpoints();
     app.MapModelEndpoints();
     app.MapStatusEndpoints();
+    app.MapSpeechEndpoints();
+    app.MapVoiceEndpoints();
     app.MapHealthChecks("/health");
 
     app.Run($"http://0.0.0.0:{appConfig.Api.Port}");

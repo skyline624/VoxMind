@@ -1,3 +1,5 @@
+using VoxMind.Core.Tts;
+
 namespace VoxMind.Core.Configuration;
 
 public class AppConfiguration
@@ -118,6 +120,50 @@ public class MlConfig
     public TranscriptionConfig Transcription { get; set; } = new();
     public SpeakerRecognitionConfig SpeakerRecognition { get; set; } = new();
     public VadConfig Vad { get; set; } = new();
+    public TtsConfig Tts { get; set; } = new();
+}
+
+public class TtsConfig
+{
+    /// <summary>Active le moteur TTS dans la composition. Désactivé → 503 sur /v1/audio/speech.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Identifiant du moteur par défaut dans la registry (<c>"f5"</c>).</summary>
+    public string DefaultEngine { get; set; } = "f5";
+
+    /// <summary>Code ISO 639-1 utilisé si la requête ne précise pas la langue.</summary>
+    public string DefaultLanguage { get; set; } = "fr";
+
+    /// <summary>Nombre de moteurs F5 chargés simultanément en RAM (FR + EN typiquement).</summary>
+    public int CacheCapacity { get; set; } = 2;
+
+    /// <summary>Nombre d'étapes Euler du flow-matching (32 par défaut, baisser = plus rapide).</summary>
+    public int FlowMatchingSteps { get; set; } = 32;
+
+    /// <summary>Checkpoints F5-TTS par code ISO 639-1.</summary>
+    public Dictionary<string, F5LanguageCheckpoint> Languages { get; set; } = new()
+    {
+        ["fr"] = new F5LanguageCheckpoint
+        {
+            Language = "fr",
+            PreprocessModelPath = AppConfiguration.GetModelPath("f5-tts", "fr", "F5_Preprocess.onnx"),
+            TransformerModelPath = AppConfiguration.GetModelPath("f5-tts", "fr", "F5_Transformer.onnx"),
+            DecodeModelPath = AppConfiguration.GetModelPath("f5-tts", "fr", "F5_Decode.onnx"),
+            TokensPath = AppConfiguration.GetModelPath("f5-tts", "fr", "tokens.txt"),
+            DefaultReferenceWav = AppConfiguration.GetModelPath("f5-tts", "fr", "reference.wav"),
+            DefaultReferenceText = "Bonjour, je suis prête à vous parler.",
+        },
+        ["en"] = new F5LanguageCheckpoint
+        {
+            Language = "en",
+            PreprocessModelPath = AppConfiguration.GetModelPath("f5-tts", "en", "F5_Preprocess.onnx"),
+            TransformerModelPath = AppConfiguration.GetModelPath("f5-tts", "en", "F5_Transformer.onnx"),
+            DecodeModelPath = AppConfiguration.GetModelPath("f5-tts", "en", "F5_Decode.onnx"),
+            TokensPath = AppConfiguration.GetModelPath("f5-tts", "en", "tokens.txt"),
+            DefaultReferenceWav = AppConfiguration.GetModelPath("f5-tts", "en", "reference.wav"),
+            DefaultReferenceText = "Hello, I am ready to talk with you.",
+        },
+    };
 }
 
 public class TranscriptionConfig

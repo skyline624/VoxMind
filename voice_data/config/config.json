@@ -9,27 +9,19 @@
     "default_sample_rate": 16000,
     "default_chunk_duration_ms": 100,
     "sources": {
-      "micro": {
-        "enabled": true,
-        "device_index": -1,
-        "name": "default"
-      },
-      "system": {
-        "enabled": false,
-        "device_index": -1,
-        "name": "default"
-      }
+      "micro": { "enabled": true, "device_index": -1, "name": "default" },
+      "system": { "enabled": false, "device_index": -1, "name": "default" }
     },
     "max_silent_duration_ms": 30000
   },
   "api": {
-    "port": 8000,
+    "port": 8090,
     "enable_swagger": true
   },
   "ml": {
     "vad": {
-      "enabled": true,
-      "model_path": "/home/pc/devellopement/VoxMind/models/silero_vad.onnx",
+      "enabled": false,
+      "model_path": "/src/models/silero_vad.onnx",
       "threshold": 0.5,
       "min_silence_duration_seconds": 0.3,
       "min_speech_duration_seconds": 0.1,
@@ -37,34 +29,50 @@
     },
     "transcription": {
       "engine": "parakeet",
-      "parakeet_model_path": "/home/pc/devellopement/VoxMind/models/parakeet-tdt-0.6b-v3-int8",
+      "parakeet_model_path": "/src/models/parakeet-tdt-0.6b-v3-int8",
       "default_model": "parakeet"
     },
     "speaker_recognition": {
-      "enabled": true,
+      "enabled": false,
       "confidence_threshold": 0.5,
       "sherpa_onnx": {
-        "embedding_model_path": "/home/pc/devellopement/VoxMind/models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
+        "embedding_model_path": "/src/models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
         "num_threads": 4,
         "clustering_threshold": 0.5
+      }
+    },
+    "tts": {
+      "enabled": true,
+      "default_engine": "f5",
+      "default_language": "fr",
+      "cache_capacity": 2,
+      "flow_matching_steps": 32,
+      "languages": {
+        "fr": {
+          "language": "fr",
+          "preprocess_model_path": "/src/models/f5-tts/fr/F5_Preprocess.onnx",
+          "transformer_model_path": "/src/models/f5-tts/fr/F5_Transformer.onnx",
+          "decode_model_path": "/src/models/f5-tts/fr/F5_Decode.onnx",
+          "tokens_path": "/src/models/f5-tts/fr/tokens.txt",
+          "default_reference_wav": "/src/models/f5-tts/fr/reference.wav",
+          "default_reference_text": "Bonjour."
+        },
+        "en": {
+          "language": "en",
+          "preprocess_model_path": "/src/models/f5-tts/en/F5_Preprocess.onnx",
+          "transformer_model_path": "/src/models/f5-tts/en/F5_Transformer.onnx",
+          "decode_model_path": "/src/models/f5-tts/en/F5_Decode.onnx",
+          "tokens_path": "/src/models/f5-tts/en/tokens.txt",
+          "default_reference_wav": "/src/models/f5-tts/en/reference.wav",
+          "default_reference_text": "Some call me nature, others call me mother nature."
+        }
       }
     }
   },
   "logging": {
     "level": "Information",
-    "console": {
-      "enabled": true,
-      "format": "colored"
-    },
-    "file": {
-      "enabled": true,
-      "rolling_interval": "Day",
-      "retained_file_count": 30
-    }
+    "console": { "enabled": true, "format": "colored" },
+    "file": { "enabled": true, "rolling_interval": "Day", "retained_file_count": 30 }
   },
-  "metrics": {
-    "enabled": false,
-    "port": 9090,
-    "endpoint": "/metrics"
-  }
+  "metrics": { "enabled": false, "port": 9090, "endpoint": "/metrics" }
 }

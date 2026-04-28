@@ -49,6 +49,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../VoxMind.Parakeet/VoxMind.Parakeet.csproj" />
+    <ProjectReference Include="../VoxMind.F5Tts/VoxMind.F5Tts.csproj" />
   </ItemGroup>
 
 

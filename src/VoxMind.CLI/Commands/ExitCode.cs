@@ -14,5 +14,6 @@ public enum ExitCode
     NotListening = 9,
     AlreadyListening = 10,
     PyAnnoteError = 11,
-    CanceledByUser = 12
+    CanceledByUser = 12,
+    TtsError = 13
 }

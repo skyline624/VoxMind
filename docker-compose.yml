@@ -14,6 +14,7 @@ services:
       - LOG_LEVEL=Information
     volumes:
       - ./voice_data:/data
+      - ./models:/app/models       # Checkpoints ONNX (Parakeet, sherpa, F5-TTS)
       - /dev/snd:/dev/snd          # Périphériques audio Linux
     devices:
       - /dev/snd:/dev/snd

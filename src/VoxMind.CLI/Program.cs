@@ -75,6 +75,7 @@ internal class Program
         root.AddCommand(PauseCommand.Build(services));
         root.AddCommand(ResumeCommand.Build(services));
         root.AddCommand(TranscribeCommand.Build(services));
+        root.AddCommand(SpeakCommand.Build(services));
         root.AddCommand(EnrollCommand.Build(services));
         root.AddCommand(ListSpeakersCommand.Build(services));
         root.AddCommand(SessionCommands.Build(services));

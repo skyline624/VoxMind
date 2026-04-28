@@ -20,8 +20,22 @@ namespace VoxMind.Core.Transcription;
 /// </summary>
 public class ParakeetOnnxTranscriptionService : ITranscriptionService
 {
+    /// <summary>
+    /// Sous-ensemble des codes ISO 639-1 que Parakeet TDT v3 sait transcrire
+    /// (cf. model card NVIDIA, 25 langues européennes). On borne la détection
+    /// de langue post-hoc à cette liste pour éviter qu'un texte court
+    /// transcrit en EN ne soit classé en, p.ex., turc.
+    /// </summary>
+    public static readonly IReadOnlyList<string> SupportedLanguageCodes = new[]
+    {
+        "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de",
+        "el", "hu", "it", "lv", "lt", "mt", "pl", "pt", "ro", "sk",
+        "sl", "es", "sv", "ru", "uk",
+    };
+
     private readonly ILogger<ParakeetOnnxTranscriptionService> _logger;
     private readonly IVadService _vadService;
+    private readonly ILanguageDetector _languageDetector;
     private readonly string _modelDir;
     private ModelInfo _info;
     private AudioPreprocessor? _preprocessor;
@@ -35,10 +49,12 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
     public ParakeetOnnxTranscriptionService(
         string modelDir,
         IVadService vadService,
-        ILogger<ParakeetOnnxTranscriptionService> logger)
+        ILogger<ParakeetOnnxTranscriptionService> logger,
+        ILanguageDetector? languageDetector = null)
     {
         _logger = logger;
         _vadService = vadService;
+        _languageDetector = languageDetector ?? new StopwordLanguageDetector();
         _modelDir = modelDir;
         _info = new ModelInfo
         {
@@ -176,12 +192,13 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
             });
         }
 
+        var fullText = sb.ToString().Trim();
         return new TranscriptionResult
         {
-            Text = sb.ToString().Trim(),
+            Text = fullText,
             Segments = resultSegments,
             Duration = TimeSpan.FromSeconds(allSamples.Length / 16000.0),
-            Language = "en",
+            Language = _languageDetector.DetectLanguage(fullText, SupportedLanguageCodes),
             Confidence = resultSegments.Count > 0
                 ? resultSegments.Average(s => s.Confidence) : 0f,
             VadSegments = segments,
@@ -208,7 +225,7 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
         return new TranscriptionResult
         {
             Text = text,
-            Language = "en",
+            Language = _languageDetector.DetectLanguage(text, SupportedLanguageCodes),
             Confidence = 0.9f,
             Duration = TimeSpan.FromSeconds(samples.Length / 16000.0),
             Segments = new List<TranscriptionSegment>
@@ -294,7 +311,14 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
         return samples;
     }
 
-    public Task<string> DetectLanguageAsync(byte[] audioData) => Task.FromResult("en");
+    public async Task<string> DetectLanguageAsync(byte[] audioData)
+    {
+        if (audioData.Length == 0)
+            return "und";
+
+        var result = await TranscribeChunkAsync(audioData).ConfigureAwait(false);
+        return string.IsNullOrEmpty(result.Language) ? "und" : result.Language;
+    }
 
     public Task LoadModelAsync(ModelSize size)
     {
