@@ -1,0 +1,29 @@
+{
+  "application": { "name": "VoxMind", "version": "1.0.0", "environment": "production" },
+  "audio": { "default_sample_rate": 16000 },
+  "api": { "port": 8090, "enable_swagger": true },
+  "ml": {
+    "vad": { "enabled": false },
+    "transcription": {
+      "engine": "parakeet",
+      "parakeet_model_path": "/app/models/parakeet-tdt-0.6b-v3-int8",
+      "default_model": "parakeet"
+    },
+    "speaker_recognition": {
+      "enabled": true,
+      "confidence_threshold": 0.55,
+      "sherpa_onnx": {
+        "segmentation_model_path": "/app/models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx",
+        "embedding_model_path": "/app/models/3dspeaker_speech_eres2net_sv_zh-cn_16k-common.onnx",
+        "num_threads": 4,
+        "clustering_threshold": 0.5
+      }
+    },
+    "tts": { "enabled": false }
+  },
+  "logging": {
+    "level": "Information",
+    "console": { "enabled": true, "format": "json" },
+    "file": { "enabled": false }
+  }
+}

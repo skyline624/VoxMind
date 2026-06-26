@@ -1,0 +1,17 @@
+# Build context minimal : on ne veut QUE src/, la solution et docker/
+**/bin/
+**/obj/
+/models/
+/voice_data/
+/test_audio/
+/voice_data
+/.git/
+/.github/
+/.vs/
+/.vscode/
+/docs/
+/dist/
+/python_services/
+*.user
+*.log
+*.onnx
