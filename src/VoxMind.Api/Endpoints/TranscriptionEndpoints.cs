@@ -34,7 +34,7 @@ public static class TranscriptionEndpoints
         [FromQuery] string? model,
         [FromQuery] string? language,
         [FromQuery(Name = "num_speakers")] int? numSpeakers,
-        TranscriptionEngineRegistry registry,
+        [FromServices] TranscriptionEngineRegistry registry,
         ISpeakerIdentificationService speakerSvc,
         ILogger<TranscriptionResponse> logger,
         CancellationToken ct)

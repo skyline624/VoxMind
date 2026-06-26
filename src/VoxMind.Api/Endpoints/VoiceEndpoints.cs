@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using VoxMind.Api.DTOs;
 using VoxMind.Core.Tts;
 
@@ -17,7 +18,7 @@ public static class VoiceEndpoints
         return app;
     }
 
-    private static IResult HandleListAsync(TtsEngineRegistry registry)
+    private static IResult HandleListAsync([FromServices] TtsEngineRegistry registry)
     {
         var entries = registry.ListAll()
             .Select(kv => new VoiceEngineEntry(

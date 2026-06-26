@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using System.Text.Json.Serialization;
 using VoxMind.Core.Transcription;
 
@@ -15,7 +16,7 @@ public static class ModelEndpoints
         return app;
     }
 
-    private static IResult GetModelsAsync(TranscriptionEngineRegistry registry)
+    private static IResult GetModelsAsync([FromServices] TranscriptionEngineRegistry registry)
     {
         var models = registry.ListAll().Select(e => new ModelEntry(
             Id: e.Name,

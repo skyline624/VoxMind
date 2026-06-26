@@ -32,8 +32,8 @@ public static class SpeechEndpoints
 
     private static async Task<IResult> HandleSpeechAsync(
         [FromBody] SpeechRequest request,
-        TtsEngineRegistry registry,
-        AppConfiguration config,
+        [FromServices] TtsEngineRegistry registry,
+        [FromServices] AppConfiguration config,
         ILanguageDetector languageDetector,
         ILogger<SpeechRequest> logger,
         CancellationToken ct)

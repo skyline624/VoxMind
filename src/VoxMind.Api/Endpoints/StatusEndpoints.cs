@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using System.Text.Json.Serialization;
 using VoxMind.Core.Configuration;
 using VoxMind.Core.Session;
@@ -20,9 +21,9 @@ public static class StatusEndpoints
     }
 
     private static IResult GetStatusAsync(
-        TranscriptionEngineRegistry registry,
+        [FromServices] TranscriptionEngineRegistry registry,
         ISessionManager sessionManager,
-        AppConfiguration config)
+        [FromServices] AppConfiguration config)
     {
         var backend = "cpu";
         var models = registry.ListAll()
