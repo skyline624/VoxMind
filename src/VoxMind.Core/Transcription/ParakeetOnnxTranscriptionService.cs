@@ -242,14 +242,12 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
     private static async Task<float[]> DecodeToFloat32Async(string filePath, CancellationToken ct)
     {
         using var ms = new MemoryStream();
-        var ext = Path.GetExtension(filePath).ToLowerInvariant();
 
-        if (ext == ".wav")
-        {
-            var raw = await File.ReadAllBytesAsync(filePath, ct);
-            return ConvertWavToFloat32(raw);
-        }
-
+        // Toujours normaliser via ffmpeg en PCM s16le 16 kHz mono — y compris pour les .wav.
+        // Un fichier .wav peut être en float32, stéréo ou à un autre sample rate (les clients
+        // OpenAI comme AnythingLLM produisent du pcm_f32le), que ConvertWavToFloat32 — qui
+        // suppose du PCM s16le 16 kHz mono — lirait de travers (durée x2 + bruit => aucune
+        // transcription). ffmpeg gère tous ces cas de façon fiable.
         await FFMpegArguments
             .FromFileInput(filePath)
             .OutputToPipe(new StreamPipeSink(ms), opts => opts
