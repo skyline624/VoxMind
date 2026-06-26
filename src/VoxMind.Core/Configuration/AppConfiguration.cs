@@ -176,7 +176,31 @@ public class TranscriptionConfig
 public class SpeakerRecognitionConfig
 {
     public bool Enabled { get; set; } = true;
-    public float ConfidenceThreshold { get; set; } = 0.7f;
+
+    /// <summary>
+    /// Seuil de similarité cosinus au-dessus duquel un profil est considéré identifié.
+    /// 0.55 (défaut permissif validé en usage réel) : 0.65–0.7 fait rater le même
+    /// locuteur selon le micro / la fatigue / la pièce, créant des profils en double.
+    /// </summary>
+    public float ConfidenceThreshold { get; set; } = 0.55f;
+
+    /// <summary>
+    /// Borne haute de la bande d'enrichissement passif : un match dont la similarité est
+    /// dans [ConfidenceThreshold ; cette borne[ enrichit le profil (couverture acoustique
+    /// élargie). Au-dessus, le match est « assez bon » → pas d'enrichissement.
+    /// </summary>
+    public float EnrichmentCosineUpperBound { get; set; } = 0.80f;
+
+    /// <summary>
+    /// Garde anti-doublon : un embedding dont la similarité avec un vecteur déjà stocké du
+    /// profil dépasse ce seuil n'est pas réajouté (évite de gonfler le profil de quasi-
+    /// doublons issus de la même condition de capture).
+    /// </summary>
+    public float DuplicateRejectionThreshold { get; set; } = 0.95f;
+
+    /// <summary>Durée audio minimale (s) requise pour enrichir passivement un profil.</summary>
+    public double MinEnrichmentDurationSeconds { get; set; } = 2.0;
+
     public SherpaOnnxConfig SherpaOnnx { get; set; } = new();
 }
 

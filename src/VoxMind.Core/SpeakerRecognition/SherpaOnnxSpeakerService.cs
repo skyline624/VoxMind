@@ -21,6 +21,9 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
     private readonly ILogger<SherpaOnnxSpeakerService> _logger;
     private readonly float _confidenceThreshold;
     private readonly float _clusteringThreshold;
+    private readonly float _enrichmentUpperBound;
+    private readonly float _duplicateRejectionThreshold;
+    private readonly double _minEnrichmentDurationSeconds;
     private readonly string _embeddingsDir;
     private readonly SpeakerEmbeddingExtractor? _extractor;
     private readonly OfflineSpeakerDiarization? _diarizer;
@@ -40,6 +43,9 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
         _logger = logger;
         _confidenceThreshold = config.ConfidenceThreshold;
         _clusteringThreshold = config.SherpaOnnx.ClusteringThreshold;
+        _enrichmentUpperBound = config.EnrichmentCosineUpperBound;
+        _duplicateRejectionThreshold = config.DuplicateRejectionThreshold;
+        _minEnrichmentDurationSeconds = config.MinEnrichmentDurationSeconds;
         _embeddingsDir = embeddingsDir;
         Directory.CreateDirectory(embeddingsDir);
 
@@ -142,17 +148,31 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
         _logger.LogInformation("Cache embeddings initialisé : {Count} profils.", _embeddingCache.Count);
     }
 
-    public Task<SpeakerIdentificationResult> IdentifyFromAudioAsync(byte[] audioData, CancellationToken ct = default)
+    public async Task<SpeakerIdentificationResult> IdentifyFromAudioAsync(byte[] audioData, CancellationToken ct = default)
     {
         if (_extractor is null)
-            return Task.FromResult(SpeakerIdentificationResult.Unknown(_confidenceThreshold));
+            return SpeakerIdentificationResult.Unknown(_confidenceThreshold);
 
         float[] samples = ConvertWavToFloat(audioData);
         var embedding = ExtractEmbeddingFromSamples(samples);
         if (embedding is null)
-            return Task.FromResult(SpeakerIdentificationResult.Unknown(_confidenceThreshold));
+            return SpeakerIdentificationResult.Unknown(_confidenceThreshold);
 
-        return IdentifyAsync(embedding);
+        var result = await IdentifyAsync(embedding);
+
+        // Enrichissement passif : un locuteur connu reconnu avec une similarité « moyenne »
+        // (bande [seuil ; borne haute[) voit cet embedding ajouté à son profil pour élargir
+        // sa couverture acoustique (micros/voix variables). Gardé par une durée minimale
+        // (qualité) et une garde anti-doublon (compacité) — cf. TryEnrichProfileAsync.
+        double durationSeconds = samples.Length / 16000.0;
+        if (result.IsIdentified && result.ProfileId.HasValue
+            && result.Confidence < _enrichmentUpperBound
+            && durationSeconds >= _minEnrichmentDurationSeconds)
+        {
+            await TryEnrichProfileAsync(result.ProfileId.Value, embedding, result.Confidence);
+        }
+
+        return result;
     }
 
     public async Task<SpeakerIdentificationResult> IdentifyAsync(float[] embedding)
@@ -170,31 +190,9 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
 
         foreach (var (profileId, vectors) in snapshot)
         {
-            // Comparer contre le meilleur embedding individuel ET le centroïde moyen
-            // Cela permet de reconnaître un locuteur même avec des conditions d'enregistrement différentes
-            float bestForProfile = 0f;
-
-            // Comparaison individuelle
-            foreach (var stored in vectors)
-            {
-                float sim = CosineSimilarity(embedding, stored);
-                if (sim > bestForProfile) bestForProfile = sim;
-            }
-
-            // Comparaison contre le centroïde (moyenne des embeddings du profil)
-            if (vectors.Count > 1)
-            {
-                var centroid = new float[embedding.Length];
-                for (int i = 0; i < centroid.Length; i++)
-                {
-                    float sum = 0f;
-                    foreach (var v in vectors) sum += v[i];
-                    centroid[i] = sum / vectors.Count;
-                }
-                float centroidSim = CosineSimilarity(embedding, centroid);
-                if (centroidSim > bestForProfile) bestForProfile = centroidSim;
-            }
-
+            // Meilleure similarité contre ce profil (max individuel OU centroïde moyen) —
+            // robuste aux conditions d'enregistrement variables (micros, pièce, fatigue).
+            float bestForProfile = BestSimilarity(embedding, vectors);
             if (bestForProfile > bestSimilarity)
             {
                 bestSimilarity = bestForProfile;
@@ -249,6 +247,73 @@ public class SherpaOnnxSpeakerService : ISpeakerIdentificationService
         }
 
         AddToCache(profileId, embedding);
+    }
+
+    /// <summary>
+    /// Enrichissement passif d'un profil : ajoute l'embedding courant pour élargir la
+    /// couverture acoustique, SAUF s'il est quasi identique (≥ seuil anti-doublon) à un
+    /// embedding déjà stocké — ce qui ne ferait que gonfler le profil sans gain.
+    /// </summary>
+    private async Task TryEnrichProfileAsync(Guid profileId, float[] embedding, float confidence)
+    {
+        List<float[]>? existing;
+        lock (_cacheLock)
+            existing = _embeddingCache.TryGetValue(profileId, out var v) ? v.ToList() : null;
+
+        if (existing is not null)
+        {
+            foreach (var stored in existing)
+            {
+                if (CosineSimilarity(embedding, stored) >= _duplicateRejectionThreshold)
+                    return; // quasi-doublon → on n'ajoute pas
+            }
+        }
+
+        await AddEmbeddingToProfileAsync(profileId, embedding, confidence);
+        _logger.LogDebug("Enrichissement passif du profil {Id} (sim={Sim:F2}).", profileId, confidence);
+    }
+
+    /// <summary>
+    /// Similarité cosinus de la voix d'un échantillon audio contre un profil PRÉCIS
+    /// (meilleur embedding individuel ou centroïde). Utile pour vérifier une revendication
+    /// d'identité (« c'est bien X qui parle ») avant un merge/rename. Retourne 0 si
+    /// l'extracteur est absent, l'audio illisible ou le profil inconnu/vide.
+    /// </summary>
+    public Task<float> VoiceSimilarityToProfileAsync(byte[] audioData, Guid profileId, CancellationToken ct = default)
+    {
+        if (_extractor is null) return Task.FromResult(0f);
+        var embedding = ExtractEmbeddingFromSamples(ConvertWavToFloat(audioData));
+        if (embedding is null) return Task.FromResult(0f);
+
+        List<float[]>? vectors;
+        lock (_cacheLock)
+            vectors = _embeddingCache.TryGetValue(profileId, out var v) ? v.ToList() : null;
+
+        return Task.FromResult(vectors is null || vectors.Count == 0 ? 0f : BestSimilarity(embedding, vectors));
+    }
+
+    /// <summary>Meilleure similarité d'un embedding contre un profil : max(individuel, centroïde).</summary>
+    private static float BestSimilarity(float[] embedding, List<float[]> vectors)
+    {
+        float best = 0f;
+        foreach (var stored in vectors)
+        {
+            float sim = CosineSimilarity(embedding, stored);
+            if (sim > best) best = sim;
+        }
+        if (vectors.Count > 1)
+        {
+            var centroid = new float[embedding.Length];
+            for (int i = 0; i < centroid.Length; i++)
+            {
+                float sum = 0f;
+                foreach (var v in vectors) sum += v[i];
+                centroid[i] = sum / vectors.Count;
+            }
+            float centroidSim = CosineSimilarity(embedding, centroid);
+            if (centroidSim > best) best = centroidSim;
+        }
+        return best;
     }
 
     public async Task<SpeakerProfile?> GetProfileAsync(Guid profileId)
