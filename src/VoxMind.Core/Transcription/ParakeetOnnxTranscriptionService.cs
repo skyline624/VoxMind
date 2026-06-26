@@ -90,7 +90,8 @@ public class ParakeetOnnxTranscriptionService : ITranscriptionService
             _decoder = new ParakeetDecoderJoint(
                                 Path.Combine(_modelDir, "decoder_joint-model.int8.onnx"),
                                 _tokenDecoder,
-                                opts);
+                                opts,
+                                _logger);
 
             _info = new ModelInfo
             {
