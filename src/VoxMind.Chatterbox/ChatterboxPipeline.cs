@@ -5,22 +5,52 @@ namespace VoxMind.Chatterbox;
 
 /// <summary>
 /// Portage C# du pipeline d'inférence Chatterbox (onnx-community/chatterbox-multilingual-ONNX).
-/// speech_encoder -> boucle [embed_tokens -> language_model (+KV-cache) -> argmax] -> conditional_decoder.
-/// Variante q4 (greedy). Reproduit fidèlement le script Python de référence.
+/// speech_encoder -> boucle [embed_tokens -> language_model (+KV-cache) -> argmax|sampling] -> conditional_decoder.
+/// Variante q4. Reproduit fidèlement le script Python de référence.
+///
+/// Deux modes de décodage du language_model :
+///   - <b>greedy</b> (argmax + repetition penalty) : stable sur CPU, comportement par défaut.
+///   - <b>sampling</b> (repetition penalty -> softmax(logits/temp) -> top-k -> tirage) : OBLIGATOIRE
+///     sur GPU/CUDA, où le greedy déraille (génère 1001 tokens de babillage sans jamais émettre de STOP).
+///     Tirage déterministe via <see cref="System.Random"/> seedé à 0 (reproductibilité).
 /// </summary>
 public sealed class ChatterboxPipeline : IDisposable
 {
     private readonly InferenceSession _spk, _emb, _lm, _dec;
     private readonly ChatterboxTokenizer _tok;
+    private readonly bool _useSampling;
+    private Random _rng = new(0);
     private const int NL = 30, NKV = 16, HD = 64;
     private const long START_SPEECH = 6561, STOP_SPEECH = 6562;
 
-    public ChatterboxPipeline(string onnxDir, string tokenizerJson, string lmVariant = "q4")
+    /// <param name="device"><c>"cpu"</c> (défaut) ou <c>"cuda"</c> — sur "cuda", le CUDAExecutionProvider est
+    /// ajouté aux sessions (nécessite le package <c>Microsoft.ML.OnnxRuntime.Gpu</c> et le runtime CUDA/cuDNN).</param>
+    /// <param name="useSampling"><c>false</c> (défaut) = greedy/argmax ; <c>true</c> = sampling (requis sur GPU).</param>
+    public ChatterboxPipeline(string onnxDir, string tokenizerJson, string lmVariant = "q4",
+                              string device = "cpu", bool useSampling = false)
     {
+        _useSampling = useSampling;
         var so = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
         // LM autorégressif batch=1 : limiter l'oversubscription des threads (machine à 128 coeurs logiques)
         var soLm = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
         soLm.IntraOpNumThreads = 8;
+        if (string.Equals(device, "cuda", StringComparison.OrdinalIgnoreCase))
+        {
+#if CUDA
+            // Provider CUDA sur device 0 (RTX 3090). AppendExecutionProvider_CUDA n'existe que dans le
+            // package Microsoft.ML.OnnxRuntime.Gpu (build -p:UseCuda=true) ; il n'est résolu au runtime
+            // que si la lib native onnxruntime_providers_cuda est présente (package .Gpu + CUDA/cuDNN).
+            so.AppendExecutionProvider_CUDA(0);
+            soLm.AppendExecutionProvider_CUDA(0);
+#else
+            // Build CPU (package Microsoft.ML.OnnxRuntime sans support CUDA) : on ne casse pas, on reste
+            // sur le CPUExecutionProvider et on signale que la demande "cuda" est ignorée.
+            Console.Error.WriteLine(
+                "[ChatterboxPipeline] device=\"cuda\" demandé mais cette build n'a pas le support CUDA " +
+                "(recompiler avec -p:UseCuda=true et le package Microsoft.ML.OnnxRuntime.Gpu). " +
+                "Repli sur le CPUExecutionProvider.");
+#endif
+        }
         _spk = new InferenceSession(Path.Combine(onnxDir, "speech_encoder.onnx"), so);
         _emb = new InferenceSession(Path.Combine(onnxDir, "embed_tokens.onnx"), soLm);
         string lmFile = lmVariant == "fp32" ? "language_model.onnx" : $"language_model_{lmVariant}.onnx";
@@ -31,6 +61,9 @@ public sealed class ChatterboxPipeline : IDisposable
 
     public float[] Generate(string text, string lang, float[] refAudio, float exaggeration = 0.5f, int maxNew = 1000)
     {
+        // Sampling reproductible : on repart de la même graine à chaque appel.
+        if (_useSampling) _rng = new Random(0);
+
         // 1) speech_encoder
         var audioT = new DenseTensor<float>(refAudio, new[] { 1, refAudio.Length });
         DenseTensor<float> condEmb, speakerEmb, speakerFeat;
@@ -91,7 +124,10 @@ public sealed class ChatterboxPipeline : IDisposable
             var curOut = _lm.Run(lmIn);                      // NON disposé ici : ses `present` servent de `past` au pas suivant
             var arr = curOut.ToArray();                       // accès par index : [0]=logits, [1+2l]=present.l.key, [2+2l]=present.l.value
             var logits = arr[0].AsTensor<float>();
-            long next = ArgmaxWithPenalty(logits, logits.Dimensions[1] - 1, logits.Dimensions[2], gen, 1.2f);
+            int tLast = logits.Dimensions[1] - 1, vSize = logits.Dimensions[2];
+            long next = _useSampling
+                ? SampleWithPenalty(logits, tLast, vSize, gen, 1.2f, 0.8f, 50)
+                : ArgmaxWithPenalty(logits, tLast, vSize, gen, 1.2f);
             gen.Add(next);
 
             if (next != STOP_SPEECH)
@@ -172,6 +208,46 @@ public sealed class ChatterboxPipeline : IDisposable
         int best = 0; float bv = s[0];
         for (int v = 1; v < V; v++) if (s[v] > bv) { bv = s[v]; best = v; }
         return best;
+    }
+
+    /// <summary>
+    /// Décodage par échantillonnage (reproduit le sampling Python validé sur GPU) :
+    /// repetition penalty -> softmax(logits/temp) -> top-k -> tirage pondéré.
+    /// Indispensable sur CUDA (le greedy y déraille). Le tirage utilise <see cref="_rng"/> (seed 0).
+    /// </summary>
+    private long SampleWithPenalty(Tensor<float> logits, int t, int V, List<long> gen,
+                                   float penalty = 1.2f, float temp = 0.8f, int topK = 50)
+    {
+        // 1) repetition penalty (identique au greedy), en float64 comme le POC Python.
+        var s = new double[V];
+        for (int v = 0; v < V; v++) s[v] = logits[0, t, v];
+        foreach (var g in gen)
+        {
+            if (g < 0 || g >= V) continue;
+            s[(int)g] = s[(int)g] < 0 ? s[(int)g] * penalty : s[(int)g] / penalty;
+        }
+        // 2) softmax(scores / temp) sur tout le vocabulaire.
+        double max = double.NegativeInfinity;
+        for (int v = 0; v < V; v++) { s[v] /= temp; if (s[v] > max) max = s[v]; }
+        double sum = 0;
+        for (int v = 0; v < V; v++) { s[v] = Math.Exp(s[v] - max); sum += s[v]; }
+        for (int v = 0; v < V; v++) s[v] /= sum;
+        // 3) top-k : indices des k plus fortes probabilités.
+        int k = Math.Min(topK, V);
+        var idx = new int[V];
+        for (int v = 0; v < V; v++) idx[v] = v;
+        Array.Sort(idx, (a, b) => s[b].CompareTo(s[a]));
+        // 4) renormalisation sur le top-k puis tirage pondéré (déterministe via _rng).
+        double pkSum = 0;
+        for (int i = 0; i < k; i++) pkSum += s[idx[i]];
+        double r = _rng.NextDouble() * pkSum;
+        double acc = 0;
+        for (int i = 0; i < k; i++)
+        {
+            acc += s[idx[i]];
+            if (r <= acc) return idx[i];
+        }
+        return idx[k - 1];
     }
 
     public void Dispose()

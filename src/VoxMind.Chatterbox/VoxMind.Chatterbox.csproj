@@ -9,9 +9,18 @@
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- 1.22.0 requis : support q4 (MatMulNBits) du language_model quantifié 4 bits. -->
+  <!-- ONNX Runtime 1.22.0 (requis : support q4 / MatMulNBits 4 bits).
+       CPU par défaut ; build GPU (CUDAExecutionProvider) via -p:UseCuda=true.
+       Un seul package managé doit être actif dans tout le graphe (cohérence d'assembly). -->
+  <ItemGroup Condition="'$(UseCuda)' == 'true'">
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.22.0" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseCuda)' != 'true'">
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.22.0" />
   </ItemGroup>
+  <!-- Symbole CUDA : active l'appel AppendExecutionProvider_CUDA (cf. #if CUDA dans ChatterboxPipeline). -->
+  <PropertyGroup Condition="'$(UseCuda)' == 'true'">
+    <DefineConstants>$(DefineConstants);CUDA</DefineConstants>
+  </PropertyGroup>
 
 </Project>

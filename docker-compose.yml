@@ -18,3 +18,33 @@ services:
     # Permet à un autre conteneur (ex. AnythingLLM) de joindre l'hôte si besoin.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  # Conteneur GPU dédié au TTS Chatterbox (décodeur flow-matching accéléré CUDA sur RTX 3090).
+  # Indépendant du conteneur CPU `voxmind` (qui reste inchangé). STT/VAD/diarisation désactivés
+  # (config.gpu.json) pour éviter le conflit de lib native onnxruntime-gpu ↔ sherpa-onnx.
+  voxmind-tts-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: voxmind-tts-gpu:latest
+    container_name: voxmind-tts-gpu
+    ports:
+      - "8091:8090"
+    volumes:
+      - ./models:/app/models:ro
+      # Config GPU montée (device=cuda + sampling pour la langue fr). Modifiable sans rebuild.
+      - ./docker/config.gpu.json:/app/data/config/config.json:ro
+    environment:
+      - VOXMIND_MODELS_DIR=/app/models
+      - VOXMIND_DATA_DIR=/app/data
+    # Accès GPU NVIDIA (runtime nvidia / nvidia-container-toolkit requis sur l'hôte).
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

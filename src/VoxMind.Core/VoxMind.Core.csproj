@@ -37,10 +37,20 @@
     <!-- Décodage multi-formats (MP3, WAV, OGG, Opus, WebM) via FFmpeg CLI -->
     <PackageReference Include="FFMpegCore" Version="5.1.0" />
 
-    <!-- ONNX Runtime — requis pour OnnxSessionOptionsFactory (ROCm/CUDA EPs)    -->
-    <!-- v1.22.0 : aligné sur VoxMind.Chatterbox (support q4 / MatMulNBits 4 bits). -->
+  </ItemGroup>
+
+  <!-- ONNX Runtime 1.22.0 (OnnxSessionOptionsFactory / q4 MatMulNBits) : CPU par défaut,
+       .Gpu (CUDAExecutionProvider) via -p:UseCuda=true. Un seul package managé actif dans
+       tout le graphe pour éviter les conflits d'assembly. -->
+  <ItemGroup Condition="'$(UseCuda)' == 'true'">
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.22.0" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseCuda)' != 'true'">
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.22.0" />
   </ItemGroup>
+  <PropertyGroup Condition="'$(UseCuda)' == 'true'">
+    <DefineConstants>$(DefineConstants);CUDA</DefineConstants>
+  </PropertyGroup>
 
   <!-- Overrides de sécurité : forcent des versions corrigées sur des dépendances
        transitives vulnérables (NU1903) tirées par EF Core 10. -->

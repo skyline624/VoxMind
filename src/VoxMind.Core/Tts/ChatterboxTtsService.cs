@@ -99,9 +99,10 @@ public sealed class ChatterboxTtsService : ITtsService
         var pipeline = _cache.GetOrLoad(modelKey, () =>
         {
             _logger.LogInformation(
-                "Chatterbox : chargement du pipeline ONNX depuis {Dir} (variant {Variant}) — peut prendre ~78 s…",
-                modelKey, checkpoint.LmVariant);
-            return new ChatterboxPipeline(modelKey, checkpoint.TokenizerPath, checkpoint.LmVariant);
+                "Chatterbox : chargement du pipeline ONNX depuis {Dir} (variant {Variant}, device {Device}, sampling {Sampling}) — peut prendre ~78 s…",
+                modelKey, checkpoint.LmVariant, checkpoint.Device, checkpoint.UseSampling);
+            return new ChatterboxPipeline(modelKey, checkpoint.TokenizerPath, checkpoint.LmVariant,
+                                          checkpoint.Device, checkpoint.UseSampling);
         });
 
         // Audio de référence (voice cloning) : fourni, sinon défaut configuré pour la langue.

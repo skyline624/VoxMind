@@ -126,14 +126,20 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<TtsEngineRegistry>().Get(config.Ml.Tts.DefaultEngine));
         }
 
-        // Speaker recognition — sherpa-onnx (local, sans serveur Python)
-        services.AddSingleton<ISpeakerIdentificationService>(sp =>
-            new SherpaOnnxSpeakerService(
-                config.Ml.SpeakerRecognition,
-                sp.GetRequiredService<IDbContextFactory<VoxMindDbContext>>(),
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<SherpaOnnxSpeakerService>>()
-            )
-        );
+        // Speaker recognition — sherpa-onnx (local, sans serveur Python).
+        // Conditionnel comme le VAD : quand désactivé, on enregistre un NoOp qui NE CHARGE PAS
+        // la lib native sherpa (sinon conflit libonnxruntime.so ↔ onnxruntime-gpu → crash au
+        // démarrage du conteneur GPU). Avec enabled=true (conteneur CPU), comportement inchangé.
+        if (config.Ml.SpeakerRecognition.Enabled)
+            services.AddSingleton<ISpeakerIdentificationService>(sp =>
+                new SherpaOnnxSpeakerService(
+                    config.Ml.SpeakerRecognition,
+                    sp.GetRequiredService<IDbContextFactory<VoxMindDbContext>>(),
+                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<SherpaOnnxSpeakerService>>()
+                )
+            );
+        else
+            services.AddSingleton<ISpeakerIdentificationService, DisabledSpeakerService>();
 
         // Session
         services.AddSingleton<ISummaryGenerator, SummaryGenerator>();

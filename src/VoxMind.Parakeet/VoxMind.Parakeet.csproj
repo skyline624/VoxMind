@@ -10,8 +10,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.18.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
   </ItemGroup>
+
+  <!-- ONNX Runtime 1.22.0 : CPU par défaut ; .Gpu via -p:UseCuda=true. Aligné sur le reste
+       du graphe (un seul package onnxruntime managé actif pour éviter les conflits d'assembly). -->
+  <ItemGroup Condition="'$(UseCuda)' == 'true'">
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.22.0" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseCuda)' != 'true'">
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.22.0" />
+  </ItemGroup>
+  <PropertyGroup Condition="'$(UseCuda)' == 'true'">
+    <DefineConstants>$(DefineConstants);CUDA</DefineConstants>
+  </PropertyGroup>
 
 </Project>

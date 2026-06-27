@@ -1,0 +1,50 @@
+# ── Build stage ───────────────────────────────────────────────────────────
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# Restore en couche cache : copier d'abord les csproj du graphe de l'API.
+COPY src/VoxMind.Core/VoxMind.Core.csproj             src/VoxMind.Core/
+COPY src/VoxMind.Api/VoxMind.Api.csproj               src/VoxMind.Api/
+COPY src/VoxMind.Parakeet/VoxMind.Parakeet.csproj     src/VoxMind.Parakeet/
+COPY src/VoxMind.F5Tts/VoxMind.F5Tts.csproj           src/VoxMind.F5Tts/
+COPY src/VoxMind.Chatterbox/VoxMind.Chatterbox.csproj src/VoxMind.Chatterbox/
+# -p:UseCuda=true → bascule tout le graphe sur Microsoft.ML.OnnxRuntime.Gpu + symbole CUDA.
+RUN dotnet restore src/VoxMind.Api/VoxMind.Api.csproj -p:UseCuda=true
+
+COPY src/ ./src/
+# Publish framework-dependent, en mode GPU (-p:UseCuda=true). IMPORTANT : on N'APPLIQUE PAS le
+# fix sherpa du Dockerfile CPU. Par défaut, le publish conserve la libonnxruntime.so du package
+# Microsoft.ML.OnnxRuntime.Gpu (CUDA-capable) + libonnxruntime_providers_cuda.so. L'écraser par
+# la lib sherpa (CPU-only) rendrait le CUDAExecutionProvider introuvable. La diarisation/VAD
+# (sherpa) étant désactivées dans config.gpu.json, libsherpa-onnx-c-api.so n'est jamais chargée.
+RUN dotnet publish src/VoxMind.Api/VoxMind.Api.csproj -c Release -o /app/publish /p:UseAppHost=false -p:UseCuda=true
+
+# ── Runtime stage (CUDA 12.6 + cuDNN 9) ───────────────────────────────────
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04 AS runtime
+WORKDIR /app
+
+# Runtime ASP.NET Core 10 copié depuis l'image officielle (même version que le conteneur CPU,
+# évite toute dépendance à un dépôt apt .NET sur la base CUDA).
+COPY --from=mcr.microsoft.com/dotnet/aspnet:10.0 /usr/share/dotnet /usr/share/dotnet
+ENV PATH="/usr/share/dotnet:${PATH}" \
+    DOTNET_RUNNING_IN_CONTAINER=true
+
+# Dépendances natives :
+#   ffmpeg                      → décodage audio multi-format
+#   libgomp1 / libstdc++6       → onnxruntime natif
+#   libicu70 / libssl3 / krb5   → runtime .NET sur Ubuntu 22.04
+# Les libs CUDA/cuDNN requises par onnxruntime_providers_cuda.so proviennent de la base.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libgomp1 libstdc++6 libicu70 libssl3 libgssapi-krb5-2 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/publish .
+COPY docker/config.gpu.json /app/data/config/config.json
+
+# Les modèles sont montés en volume sur /app/models (cf. docker-compose : voxmind-tts-gpu).
+ENV VOXMIND_DATA_DIR=/app/data \
+    VOXMIND_MODELS_DIR=/app/models \
+    ASPNETCORE_URLS=
+
+EXPOSE 8090
+ENTRYPOINT ["dotnet", "VoxMind.Api.dll"]

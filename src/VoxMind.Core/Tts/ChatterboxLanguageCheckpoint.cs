@@ -44,4 +44,18 @@ public sealed class ChatterboxLanguageCheckpoint
 
     /// <summary>Niveau d'exagération prosodique passé au pipeline (0.5 par défaut).</summary>
     public float Exaggeration { get; set; } = 0.5f;
+
+    /// <summary>
+    /// Backend d'exécution ONNX : <c>"cpu"</c> (défaut) ou <c>"cuda"</c>. Sur <c>"cuda"</c>, le pipeline
+    /// ajoute le <c>CUDAExecutionProvider</c> aux sessions (conteneur GPU dédié, package
+    /// <c>Microsoft.ML.OnnxRuntime.Gpu</c> + runtime CUDA/cuDNN requis).
+    /// </summary>
+    public string Device { get; set; } = "cpu";
+
+    /// <summary>
+    /// Mode de décodage du language_model. <c>false</c> (défaut) = greedy/argmax (stable sur CPU).
+    /// <c>true</c> = sampling (repetition penalty → softmax/temp → top-k) — <b>obligatoire sur GPU</b>,
+    /// où le greedy déraille (babillage de 1001 tokens sans STOP).
+    /// </summary>
+    public bool UseSampling { get; set; } = false;
 }
