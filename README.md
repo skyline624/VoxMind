@@ -5,7 +5,7 @@ Système local de transcription vocale en temps réel avec identification automa
 ## Fonctionnalités
 
 - Transcription vocale temps réel multilingue (Parakeet TDT ONNX v3 — 25 langues européennes, détection de langue automatique, 100% local sans Python)
-- Synthèse vocale avec voice cloning (F5-TTS-ONNX — FR + EN, 100% local sans Python)
+- Synthèse vocale avec voice cloning (**Chatterbox Multilingual ONNX** — 23 langues dont FR, qualité « ElevenLabs », licence MIT ; ou F5-TTS-ONNX — FR + EN ; 100% local sans Python)
 - Identification des locuteurs (sherpa-onnx — 100% local, sans Python)
 - Mode écoute continu avec résumés automatiques
 - Communication externe via bridge JSON file-based (Cortana/OpenClaw)
@@ -13,7 +13,7 @@ Système local de transcription vocale en temps réel avec identification automa
 
 ## Prérequis
 
-- .NET 8.0+
+- .NET 10
 - PortAudio (`libportaudio2`, Linux) ou NAudio (Windows)
 
 ## Installation Rapide
@@ -55,10 +55,11 @@ dotnet run --project src/VoxMind.CLI
 ## Architecture
 
 ```
-VoxMind (C# .NET 8) — 100% local, sans Python
+VoxMind (C# .NET 10) — 100% local, sans Python
         │
    ParakeetOnnxTranscriptionService   (Microsoft.ML.OnnxRuntime, multilingue 25 langues)
    StopwordLanguageDetector           (post-hoc text-based, 25 langues)
+   ChatterboxTtsService               (Microsoft.ML.OnnxRuntime, multilingue 23 langues, voice cloning, MIT)
    F5TtsOnnxService                   (Microsoft.ML.OnnxRuntime, FR + EN voice cloning)
    SherpaOnnxSpeakerService           (org.k2fsa.sherpa.onnx)
    SessionManager
@@ -93,7 +94,20 @@ Configurer le chemin du modèle dans `appsettings.json` :
 
 ## Synthèse vocale (TTS)
 
-Moteur principal : **F5-TTS-ONNX** ([port DakeQQ](https://github.com/DakeQQ/F5-TTS-ONNX) du modèle [SWivid/F5-TTS](https://github.com/SWivid/F5-TTS)), inférence locale via `Microsoft.ML.OnnxRuntime`.
+Deux moteurs, sélectionnés par le champ `model` de la requête (`chatterbox` par défaut, `f5`).
+
+### Chatterbox Multilingual — moteur par défaut
+
+**Chatterbox Multilingual ONNX** ([onnx-community/chatterbox-multilingual-ONNX](https://huggingface.co/onnx-community/chatterbox-multilingual-ONNX), licence **MIT**, commercialement utilisable), inférence locale via `Microsoft.ML.OnnxRuntime`.
+
+- Voice cloning zero-shot, **23 langues** (dont FR) ; qualité benchmarkée face à ElevenLabs.
+- Pipeline ONNX : `speech_encoder` → `language_model` autorégressif (KV-cache) → `conditional_decoder`. Variante **q4** (CPU temps réel) ou fp16/fp32 (GPU + sampling).
+- Paramètre `exaggeration` (intensité émotionnelle) et voix de référence configurables par langue ; balises d'expression (`[laughter]`, `[sigh]`, `[whisper]`…) supportées.
+- Modèles attendus dans `models/chatterbox/` (les 4 ONNX + `tokenizer.json` + `fr/reference.wav`).
+
+### F5-TTS — alternative
+
+**F5-TTS-ONNX** ([port DakeQQ](https://github.com/DakeQQ/F5-TTS-ONNX) du modèle [SWivid/F5-TTS](https://github.com/SWivid/F5-TTS)), inférence locale via `Microsoft.ML.OnnxRuntime`.
 
 Caractéristiques :
 - Voice cloning zero-shot par audio de référence (~5 s suffisent).

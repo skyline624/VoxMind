@@ -2,6 +2,16 @@
 
 Toutes les modifications notables de ce projet sont documentées dans ce fichier.
 
+## [Unreleased]
+
+### Ajouté
+- Moteur TTS **Chatterbox Multilingual ONNX** : voice cloning zero-shot, 23 langues (dont FR), licence MIT, qualité benchmarkée face à ElevenLabs. Exposé comme moteur `chatterbox` (par défaut) via l'endpoint OpenAI-compatible `/v1/audio/speech`. Pipeline 100% C#/ONNX : tokenizer BPE + `speech_encoder` → `language_model` autorégressif à KV-cache → `conditional_decoder` ; variante q4 (CPU temps réel) ou fp16/fp32 (GPU).
+- Paramètre `exaggeration` (intensité émotionnelle) et voix de référence configurables par langue ; balises d'expression (`[laughter]`, `[sigh]`, `[whisper]`…).
+
+### Modifié
+- Migration du runtime **.NET 8 → .NET 10**.
+- `Microsoft.ML.OnnxRuntime` aligné en **1.22.0** (requis par la quantification q4 / MatMulNBits de Chatterbox).
+
 ## [1.0.0] - 2026-03-22
 
 ### Ajouté

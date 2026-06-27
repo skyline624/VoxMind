@@ -183,7 +183,7 @@ public class TtsConfig
             DefaultReferenceWav = AppConfiguration.GetModelPath("chatterbox", "fr", "reference.wav"),
             DefaultReferenceText = "Bonjour, je suis prête à vous parler.",
             LmVariant = "q4",
-            Exaggeration = 0.7f,
+            Exaggeration = 1.3f,
         },
         ["en"] = new ChatterboxLanguageCheckpoint
         {
