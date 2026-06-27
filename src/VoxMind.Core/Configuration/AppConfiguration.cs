@@ -164,6 +164,41 @@ public class TtsConfig
             DefaultReferenceText = "Hello, I am ready to talk with you.",
         },
     };
+
+    /// <summary>
+    /// Checkpoints Chatterbox multilingue par code ISO 639-1 (voice cloning zero-shot).
+    /// Le modèle est partagé entre langues : les quatre ONNX + le tokenizer pointent vers
+    /// le même dossier <c>models/chatterbox</c> ; seule la voix de référence change.
+    /// </summary>
+    public Dictionary<string, ChatterboxLanguageCheckpoint> ChatterboxLanguages { get; set; } = new()
+    {
+        ["fr"] = new ChatterboxLanguageCheckpoint
+        {
+            Language = "fr",
+            SpeechEncoderModelPath = AppConfiguration.GetModelPath("chatterbox", "speech_encoder.onnx"),
+            EmbedTokensModelPath = AppConfiguration.GetModelPath("chatterbox", "embed_tokens.onnx"),
+            LanguageModelPath = AppConfiguration.GetModelPath("chatterbox", "language_model_q4.onnx"),
+            ConditionalDecoderModelPath = AppConfiguration.GetModelPath("chatterbox", "conditional_decoder.onnx"),
+            TokenizerPath = AppConfiguration.GetModelPath("chatterbox", "tokenizer.json"),
+            DefaultReferenceWav = AppConfiguration.GetModelPath("chatterbox", "fr", "reference.wav"),
+            DefaultReferenceText = "Bonjour, je suis prête à vous parler.",
+            LmVariant = "q4",
+            Exaggeration = 0.5f,
+        },
+        ["en"] = new ChatterboxLanguageCheckpoint
+        {
+            Language = "en",
+            SpeechEncoderModelPath = AppConfiguration.GetModelPath("chatterbox", "speech_encoder.onnx"),
+            EmbedTokensModelPath = AppConfiguration.GetModelPath("chatterbox", "embed_tokens.onnx"),
+            LanguageModelPath = AppConfiguration.GetModelPath("chatterbox", "language_model_q4.onnx"),
+            ConditionalDecoderModelPath = AppConfiguration.GetModelPath("chatterbox", "conditional_decoder.onnx"),
+            TokenizerPath = AppConfiguration.GetModelPath("chatterbox", "tokenizer.json"),
+            DefaultReferenceWav = AppConfiguration.GetModelPath("chatterbox", "en", "reference.wav"),
+            DefaultReferenceText = "Hello, I am ready to talk with you.",
+            LmVariant = "q4",
+            Exaggeration = 0.5f,
+        },
+    };
 }
 
 public class TranscriptionConfig

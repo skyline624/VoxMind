@@ -4,13 +4,13 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>VoxMind.F5Tts</AssemblyName>
-    <RootNamespace>VoxMind.F5Tts</RootNamespace>
+    <AssemblyName>VoxMind.Chatterbox</AssemblyName>
+    <RootNamespace>VoxMind.Chatterbox</RootNamespace>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 1.22.0 : aligné sur VoxMind.Chatterbox (support q4) pour un runtime ONNX unique. -->
+    <!-- 1.22.0 requis : support q4 (MatMulNBits) du language_model quantifié 4 bits. -->
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.22.0" />
   </ItemGroup>
 

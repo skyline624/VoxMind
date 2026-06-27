@@ -93,6 +93,14 @@ public static class ServiceCollectionExtensions
                 )
             );
 
+            // Chatterbox multilingual ONNX : voice cloning zero-shot (q4 greedy, ORT 1.22).
+            services.AddSingleton<ChatterboxTtsService>(sp =>
+                new ChatterboxTtsService(
+                    config.Ml.Tts,
+                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ChatterboxTtsService>>()
+                )
+            );
+
             // Coqui XTTS-v2 — stub (pas d'export ONNX officiel ; pattern d'extension futur).
             services.AddSingleton<CoquiXttsTtsService>(sp =>
                 new CoquiXttsTtsService(
@@ -106,6 +114,7 @@ public static class ServiceCollectionExtensions
                     new Dictionary<string, ITtsService>
                     {
                         ["f5"] = sp.GetRequiredService<F5TtsOnnxService>(),
+                        ["chatterbox"] = sp.GetRequiredService<ChatterboxTtsService>(),
                         ["xtts"] = sp.GetRequiredService<CoquiXttsTtsService>(),
                     },
                     defaultEngine: config.Ml.Tts.DefaultEngine

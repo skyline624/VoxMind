@@ -38,8 +38,8 @@
     <PackageReference Include="FFMpegCore" Version="5.1.0" />
 
     <!-- ONNX Runtime — requis pour OnnxSessionOptionsFactory (ROCm/CUDA EPs)    -->
-    <!-- v1.18.0 : dernière version avec build ROCm officiel sur GitHub releases  -->
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.18.0" />
+    <!-- v1.22.0 : aligné sur VoxMind.Chatterbox (support q4 / MatMulNBits 4 bits). -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.22.0" />
   </ItemGroup>
 
   <!-- Overrides de sécurité : forcent des versions corrigées sur des dépendances
@@ -56,6 +56,7 @@
   <ItemGroup>
     <ProjectReference Include="../VoxMind.Parakeet/VoxMind.Parakeet.csproj" />
     <ProjectReference Include="../VoxMind.F5Tts/VoxMind.F5Tts.csproj" />
+    <ProjectReference Include="../VoxMind.Chatterbox/VoxMind.Chatterbox.csproj" />
   </ItemGroup>
 
 

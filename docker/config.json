@@ -19,7 +19,12 @@
         "clustering_threshold": 0.5
       }
     },
-    "tts": { "enabled": false }
+    "tts": {
+      "enabled": true,
+      "default_engine": "chatterbox",
+      "default_language": "fr",
+      "cache_capacity": 2
+    }
   },
   "logging": {
     "level": "Information",
