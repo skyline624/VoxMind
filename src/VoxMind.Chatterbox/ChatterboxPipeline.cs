@@ -19,6 +19,8 @@ public sealed class ChatterboxPipeline : IDisposable
     private readonly InferenceSession _spk, _emb, _lm, _dec;
     private readonly ChatterboxTokenizer _tok;
     private readonly bool _useSampling;
+    private readonly float _temperature;
+    private readonly int _topK;
     private Random _rng = new(0);
     private const int NL = 30, NKV = 16, HD = 64;
     private const long START_SPEECH = 6561, STOP_SPEECH = 6562;
@@ -26,10 +28,15 @@ public sealed class ChatterboxPipeline : IDisposable
     /// <param name="device"><c>"cpu"</c> (défaut) ou <c>"cuda"</c> — sur "cuda", le CUDAExecutionProvider est
     /// ajouté aux sessions (nécessite le package <c>Microsoft.ML.OnnxRuntime.Gpu</c> et le runtime CUDA/cuDNN).</param>
     /// <param name="useSampling"><c>false</c> (défaut) = greedy/argmax ; <c>true</c> = sampling (requis sur GPU).</param>
+    /// <param name="temperature">Température du softmax (branche sampling). Plus bas = plus conservateur. <c>0.3</c> par défaut.</param>
+    /// <param name="topK">Top-k (branche sampling). Plus bas = plus conservateur. <c>20</c> par défaut.</param>
     public ChatterboxPipeline(string onnxDir, string tokenizerJson, string lmVariant = "q4",
-                              string device = "cpu", bool useSampling = false)
+                              string device = "cpu", bool useSampling = false,
+                              float temperature = 0.3f, int topK = 20)
     {
         _useSampling = useSampling;
+        _temperature = temperature;
+        _topK = topK;
         var so = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
         // LM autorégressif batch=1 : limiter l'oversubscription des threads (machine à 128 coeurs logiques)
         var soLm = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
@@ -59,22 +66,40 @@ public sealed class ChatterboxPipeline : IDisposable
         _tok = new ChatterboxTokenizer(tokenizerJson);
     }
 
+    /// <summary>
+    /// Exécute le speech_encoder sur l'audio de référence et met en cache ses sorties (features de
+    /// conditioning, tokens de prompt, embeddings + features de locuteur). Réutilisable pour plusieurs
+    /// appels <see cref="Generate(string,string,ChatterboxReference,float,int)"/> afin de n'exécuter
+    /// le speech_encoder qu'une fois par voix de référence (ex. découpage multi-segments).
+    /// </summary>
+    public ChatterboxReference EncodeReference(float[] refAudio)
+    {
+        var audioT = new DenseTensor<float>(refAudio, new[] { 1, refAudio.Length });
+        using var o = _spk.Run(new[] { NamedOnnxValue.CreateFromTensor("audio_values", audioT) });
+        return new ChatterboxReference
+        {
+            CondEmb = Clone(Get<float>(o, "audio_features")),
+            PromptTokens = Get<long>(o, "audio_tokens").ToArray(),
+            SpeakerEmb = Clone(Get<float>(o, "speaker_embeddings")),
+            SpeakerFeat = Clone(Get<float>(o, "speaker_features")),
+        };
+    }
+
+    /// <summary>Synthèse à partir d'un audio de référence brut (encode la référence puis génère).</summary>
     public float[] Generate(string text, string lang, float[] refAudio, float exaggeration = 0.5f, int maxNew = 1000)
+        => Generate(text, lang, EncodeReference(refAudio), exaggeration, maxNew);
+
+    /// <summary>Synthèse à partir d'une voix de référence déjà encodée (voir <see cref="EncodeReference"/>).</summary>
+    public float[] Generate(string text, string lang, ChatterboxReference reference, float exaggeration = 0.5f, int maxNew = 1000)
     {
         // Sampling reproductible : on repart de la même graine à chaque appel.
         if (_useSampling) _rng = new Random(0);
 
-        // 1) speech_encoder
-        var audioT = new DenseTensor<float>(refAudio, new[] { 1, refAudio.Length });
-        DenseTensor<float> condEmb, speakerEmb, speakerFeat;
-        long[] promptTokens;
-        using (var o = _spk.Run(new[] { NamedOnnxValue.CreateFromTensor("audio_values", audioT) }))
-        {
-            condEmb = Clone(Get<float>(o, "audio_features"));
-            promptTokens = Get<long>(o, "audio_tokens").ToArray();
-            speakerEmb = Clone(Get<float>(o, "speaker_embeddings"));
-            speakerFeat = Clone(Get<float>(o, "speaker_features"));
-        }
+        // 1) speech_encoder (pré-calculé) : conditioning audio + tokens + embeddings/features locuteur.
+        var condEmb = reference.CondEmb;
+        var promptTokens = reference.PromptTokens;
+        var speakerEmb = reference.SpeakerEmb;
+        var speakerFeat = reference.SpeakerFeat;
 
         // 2) tokenisation + position_ids
         long[] ids = _tok.Encode(text, lang);
@@ -126,7 +151,7 @@ public sealed class ChatterboxPipeline : IDisposable
             var logits = arr[0].AsTensor<float>();
             int tLast = logits.Dimensions[1] - 1, vSize = logits.Dimensions[2];
             long next = _useSampling
-                ? SampleWithPenalty(logits, tLast, vSize, gen, 1.2f, 0.8f, 50)
+                ? SampleWithPenalty(logits, tLast, vSize, gen, 1.2f, _temperature, _topK)
                 : ArgmaxWithPenalty(logits, tLast, vSize, gen, 1.2f);
             gen.Add(next);
 
@@ -216,7 +241,7 @@ public sealed class ChatterboxPipeline : IDisposable
     /// Indispensable sur CUDA (le greedy y déraille). Le tirage utilise <see cref="_rng"/> (seed 0).
     /// </summary>
     private long SampleWithPenalty(Tensor<float> logits, int t, int V, List<long> gen,
-                                   float penalty = 1.2f, float temp = 0.8f, int topK = 50)
+                                   float penalty = 1.2f, float temp = 0.3f, int topK = 20)
     {
         // 1) repetition penalty (identique au greedy), en float64 comme le POC Python.
         var s = new double[V];
@@ -254,4 +279,18 @@ public sealed class ChatterboxPipeline : IDisposable
     {
         _spk.Dispose(); _emb.Dispose(); _lm.Dispose(); _dec.Dispose();
     }
+}
+
+/// <summary>
+/// Sorties du speech_encoder pré-calculées pour une voix de référence (conditioning audio, tokens
+/// de prompt, embeddings et features de locuteur). Produit par <see cref="ChatterboxPipeline.EncodeReference"/>
+/// et réutilisable pour plusieurs segments d'un même appel afin de n'exécuter le speech_encoder qu'une fois.
+/// Les tenseurs sont des copies (clones) : ils ne sont pas mutés par la génération et sont donc réutilisables.
+/// </summary>
+public sealed class ChatterboxReference
+{
+    internal DenseTensor<float> CondEmb { get; init; } = null!;
+    internal long[] PromptTokens { get; init; } = Array.Empty<long>();
+    internal DenseTensor<float> SpeakerEmb { get; init; } = null!;
+    internal DenseTensor<float> SpeakerFeat { get; init; } = null!;
 }

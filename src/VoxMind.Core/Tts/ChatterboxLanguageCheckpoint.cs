@@ -58,4 +58,16 @@ public sealed class ChatterboxLanguageCheckpoint
     /// où le greedy déraille (babillage de 1001 tokens sans STOP).
     /// </summary>
     public bool UseSampling { get; set; } = false;
+
+    /// <summary>
+    /// Température du softmax dans la branche sampling. Plus bas = plus conservateur (timbre plus fidèle,
+    /// moins de bruits parasites, moins de dérive). <c>0.3</c> par défaut (abaissé depuis 0.5). Sans effet en greedy.
+    /// </summary>
+    public float Temperature { get; set; } = 0.3f;
+
+    /// <summary>
+    /// Nombre de candidats retenus (top-k) dans la branche sampling. Plus bas = plus conservateur.
+    /// <c>20</c> par défaut (abaissé depuis 30). Sans effet en greedy.
+    /// </summary>
+    public int TopK { get; set; } = 20;
 }
