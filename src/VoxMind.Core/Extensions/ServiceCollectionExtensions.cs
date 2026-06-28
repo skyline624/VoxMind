@@ -83,21 +83,14 @@ public static class ServiceCollectionExtensions
         );
 
         // ── Synthèse vocale (TTS) ──────────────────────────────────────────────
-        // F5-TTS-ONNX : moteur principal, fine-tunes par langue, voice cloning zero-shot.
+        // Kokoro (sherpa-onnx) est le moteur par défaut (cf. config default_engine="kokoro").
+        // F5-TTS-ONNX reste disponible (voice cloning zero-shot, fine-tunes par langue).
         if (config.Ml.Tts.Enabled)
         {
             services.AddSingleton<F5TtsOnnxService>(sp =>
                 new F5TtsOnnxService(
                     config.Ml.Tts,
                     sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<F5TtsOnnxService>>()
-                )
-            );
-
-            // Chatterbox multilingual ONNX : voice cloning zero-shot (q4 greedy, ORT 1.22).
-            services.AddSingleton<ChatterboxTtsService>(sp =>
-                new ChatterboxTtsService(
-                    config.Ml.Tts,
-                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ChatterboxTtsService>>()
                 )
             );
 
@@ -108,13 +101,22 @@ public static class ServiceCollectionExtensions
                 )
             );
 
+            // Kokoro (sherpa-onnx) : moteur non-autorégressif, voix FR prédéfinie (ff_siwis),
+            // RTF très bas sur CPU. Pas de voice cloning.
+            services.AddSingleton<KokoroTtsService>(sp =>
+                new KokoroTtsService(
+                    config.Ml.Tts.Kokoro,
+                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<KokoroTtsService>>()
+                )
+            );
+
             // Registry multi-engine. Ajouter une entrée ici pour brancher Zipvoice / Piper / etc.
             services.AddSingleton<TtsEngineRegistry>(sp =>
                 new TtsEngineRegistry(
                     new Dictionary<string, ITtsService>
                     {
+                        ["kokoro"] = sp.GetRequiredService<KokoroTtsService>(),
                         ["f5"] = sp.GetRequiredService<F5TtsOnnxService>(),
-                        ["chatterbox"] = sp.GetRequiredService<ChatterboxTtsService>(),
                         ["xtts"] = sp.GetRequiredService<CoquiXttsTtsService>(),
                     },
                     defaultEngine: config.Ml.Tts.DefaultEngine

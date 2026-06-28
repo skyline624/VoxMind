@@ -21,9 +21,21 @@
     },
     "tts": {
       "enabled": true,
-      "default_engine": "chatterbox",
+      "default_engine": "kokoro",
       "default_language": "fr",
-      "cache_capacity": 2
+      "cache_capacity": 2,
+      "kokoro": {
+        "model_path": "/app/models/kokoro/model.onnx",
+        "voices_path": "/app/models/kokoro/voices.bin",
+        "tokens_path": "/app/models/kokoro/tokens.txt",
+        "data_dir": "/app/models/kokoro/espeak-ng-data",
+        "num_threads": 8,
+        "provider": "cpu",
+        "default_language": "fr",
+        "voices": {
+          "fr": { "language": "fr", "speaker_id": 30, "espeak_voice": "fr", "speed": 1.0 }
+        }
+      }
     }
   },
   "logging": {

@@ -5,7 +5,7 @@ Système local de transcription vocale en temps réel avec identification automa
 ## Fonctionnalités
 
 - Transcription vocale temps réel multilingue (Parakeet TDT ONNX v3 — 25 langues européennes, détection de langue automatique, 100% local sans Python)
-- Synthèse vocale avec voice cloning (**Chatterbox Multilingual ONNX** — 23 langues dont FR, qualité « ElevenLabs », licence MIT ; ou F5-TTS-ONNX — FR + EN ; 100% local sans Python)
+- Synthèse vocale **Kokoro** (sherpa-onnx — voix FR féminine prédéfinie, non-autorégressif, très rapide sur CPU ; ou F5-TTS-ONNX — FR + EN, voice cloning ; 100% local sans Python)
 - Identification des locuteurs (sherpa-onnx — 100% local, sans Python)
 - Mode écoute continu avec résumés automatiques
 - Communication externe via bridge JSON file-based (Cortana/OpenClaw)
@@ -59,7 +59,7 @@ VoxMind (C# .NET 10) — 100% local, sans Python
         │
    ParakeetOnnxTranscriptionService   (Microsoft.ML.OnnxRuntime, multilingue 25 langues)
    StopwordLanguageDetector           (post-hoc text-based, 25 langues)
-   ChatterboxTtsService               (Microsoft.ML.OnnxRuntime, multilingue 23 langues, voice cloning, MIT)
+   KokoroTtsService                   (org.k2fsa.sherpa.onnx, voix FR prédéfinie, non-autorégressif, défaut)
    F5TtsOnnxService                   (Microsoft.ML.OnnxRuntime, FR + EN voice cloning)
    SherpaOnnxSpeakerService           (org.k2fsa.sherpa.onnx)
    SessionManager
@@ -94,16 +94,17 @@ Configurer le chemin du modèle dans `appsettings.json` :
 
 ## Synthèse vocale (TTS)
 
-Deux moteurs, sélectionnés par le champ `model` de la requête (`chatterbox` par défaut, `f5`).
+Deux moteurs, sélectionnés par le champ `model` de la requête (`kokoro` par défaut, `f5`).
 
-### Chatterbox Multilingual — moteur par défaut
+### Kokoro — moteur par défaut
 
-**Chatterbox Multilingual ONNX** ([onnx-community/chatterbox-multilingual-ONNX](https://huggingface.co/onnx-community/chatterbox-multilingual-ONNX), licence **MIT**, commercialement utilisable), inférence locale via `Microsoft.ML.OnnxRuntime`.
+**Kokoro** (modèle 82M non-autorégressif) servi via `sherpa-onnx` (`org.k2fsa.sherpa.onnx`), inférence 100% locale sur **CPU**.
 
-- Voice cloning zero-shot, **23 langues** (dont FR) ; qualité benchmarkée face à ElevenLabs.
-- Pipeline ONNX : `speech_encoder` → `language_model` autorégressif (KV-cache) → `conditional_decoder`. Variante **q4** (CPU temps réel) ou fp16/fp32 (GPU + sampling).
-- Paramètre `exaggeration` (intensité émotionnelle) et voix de référence configurables par langue ; balises d'expression (`[laughter]`, `[sigh]`, `[whisper]`…) supportées.
-- Modèles attendus dans `models/chatterbox/` (les 4 ONNX + `tokenizer.json` + `fr/reference.wav`).
+- **Non-autorégressif** : une seule passe ONNX par phrase → RTF très bas (~0.3 mesuré sur ce parc CPU, conteneur sans GPU), bien meilleur que les moteurs autorégressifs.
+- Voix **FR féminine prédéfinie** (`ff_siwis`, speaker id 30 du modèle `kokoro-multi-lang-v1_0`) ; pas de voice cloning.
+- Phonémisation via **espeak-ng** (`DataDir`), langue forcée `fr`, lexique vide (tous les mots phonémisés en français). Sortie WAV 24 kHz mono.
+- Modèle attendu dans `models/kokoro/` : `model.onnx` (fp32 — plus rapide que l'int8 sur CPU sans VNNI), `voices.bin`, `tokens.txt`, `espeak-ng-data/`.
+  Téléchargement : [`kokoro-multi-lang-v1_0`](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models) (release `tts-models` de sherpa-onnx).
 
 ### F5-TTS — alternative
 

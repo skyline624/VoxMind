@@ -5,12 +5,16 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 ## [Unreleased]
 
 ### Ajouté
-- Moteur TTS **Chatterbox Multilingual ONNX** : voice cloning zero-shot, 23 langues (dont FR), licence MIT, qualité benchmarkée face à ElevenLabs. Exposé comme moteur `chatterbox` (par défaut) via l'endpoint OpenAI-compatible `/v1/audio/speech`. Pipeline 100% C#/ONNX : tokenizer BPE + `speech_encoder` → `language_model` autorégressif à KV-cache → `conditional_decoder` ; variante q4 (CPU temps réel) ou fp16/fp32 (GPU).
-- Paramètre `exaggeration` (intensité émotionnelle) et voix de référence configurables par langue ; balises d'expression (`[laughter]`, `[sigh]`, `[whisper]`…).
+- Moteur TTS **Kokoro** (modèle 82M non-autorégressif) servi via **sherpa-onnx** (`org.k2fsa.sherpa.onnx`, `OfflineTts` + `OfflineTtsKokoroModelConfig`). Exposé comme moteur `kokoro` (**par défaut**) sur l'endpoint OpenAI-compatible `/v1/audio/speech`. Voix FR féminine prédéfinie (`ff_siwis`, speaker id 30 du modèle `kokoro-multi-lang-v1_0`), phonémisation espeak-ng en français, sortie WAV 24 kHz. Inférence 100% CPU, **RTF ~0.32 mesuré** (contre > 1 pour un moteur autorégressif).
 
 ### Modifié
+- Moteur TTS par défaut : **Chatterbox → Kokoro** (`default_engine: "kokoro"`).
 - Migration du runtime **.NET 8 → .NET 10**.
-- `Microsoft.ML.OnnxRuntime` aligné en **1.22.0** (requis par la quantification q4 / MatMulNBits de Chatterbox).
+- `Microsoft.ML.OnnxRuntime` simplifié en **1.22.0 CPU** uniquement (suppression de la variante conditionnelle `.Gpu` / `UseCuda`).
+
+### Supprimé
+- Moteur TTS **Chatterbox** (autorégressif, lent sur CPU) : projet `VoxMind.Chatterbox` (`ChatterboxPipeline`, `ChatterboxTokenizer`), `ChatterboxTtsService`, `ChatterboxLanguageCheckpoint`, config `ChatterboxLanguages`, modèles `models/chatterbox/`.
+- Infrastructure **GPU/CUDA** devenue inutile : service Docker `voxmind-tts-gpu`, `Dockerfile.gpu`, `docker/config.gpu.json`, service compose GPU, build conditionnel `UseCuda` + package `Microsoft.ML.OnnxRuntime.Gpu` + symbole `CUDA`.
 
 ## [1.0.0] - 2026-03-22
 

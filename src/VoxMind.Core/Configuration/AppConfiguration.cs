@@ -166,39 +166,79 @@ public class TtsConfig
     };
 
     /// <summary>
-    /// Checkpoints Chatterbox multilingue par code ISO 639-1 (voice cloning zero-shot).
-    /// Le modèle est partagé entre langues : les quatre ONNX + le tokenizer pointent vers
-    /// le même dossier <c>models/chatterbox</c> ; seule la voix de référence change.
+    /// Configuration du moteur Kokoro (sherpa-onnx, non-autorégressif, voix prédéfinies).
+    /// Modèle multilingue <c>kokoro-multi-lang-v1_0</c> : voix FR féminine <c>ff_siwis</c> (sid 30).
     /// </summary>
-    public Dictionary<string, ChatterboxLanguageCheckpoint> ChatterboxLanguages { get; set; } = new()
+    public KokoroConfig Kokoro { get; set; } = new();
+}
+
+/// <summary>
+/// Chemins et paramètres du moteur Kokoro via sherpa-onnx <see cref="VoxMind.Core.Tts.KokoroTtsService"/>.
+/// Le modèle est multilingue ; la phonémisation passe par espeak-ng (<see cref="DataDir"/>).
+/// </summary>
+public class KokoroConfig
+{
+    /// <summary>
+    /// Modèle ONNX Kokoro. On utilise la variante <b>fp32</b> (<c>model.onnx</c>) : sur CPU, les
+    /// kernels GEMM fp32 optimisés (MLAS) sont nettement plus rapides que le chemin int8/MatMulInteger
+    /// (mesuré RTF ~0.3 fp32 contre ~1.5 int8 sur ce parc), pour une qualité supérieure.
+    /// </summary>
+    public string ModelPath { get; set; } = AppConfiguration.GetModelPath("kokoro", "model.onnx");
+
+    /// <summary>Embeddings de style des voix (<c>voices.bin</c>) — une voix par speaker id.</summary>
+    public string VoicesPath { get; set; } = AppConfiguration.GetModelPath("kokoro", "voices.bin");
+
+    /// <summary>Table tokens → ids (<c>tokens.txt</c>).</summary>
+    public string TokensPath { get; set; } = AppConfiguration.GetModelPath("kokoro", "tokens.txt");
+
+    /// <summary>Données espeak-ng pour la phonémisation (obligatoire).</summary>
+    public string DataDir { get; set; } = AppConfiguration.GetModelPath("kokoro", "espeak-ng-data");
+
+    /// <summary>Dossier dict jieba (segmentation chinoise). Inutile pour le FR → vide.</summary>
+    public string DictDir { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Lexiques de prononciation (chemins séparés par des virgules). Laissé VIDE pour le FR :
+    /// tous les mots passent alors par espeak-ng en français (prononciation cohérente).
+    /// </summary>
+    public string Lexicon { get; set; } = string.Empty;
+
+    /// <summary>Threads d'inférence ONNX (8 = bon compromis latence/charge ; au-delà, gains marginaux).</summary>
+    public int NumThreads { get; set; } = 8;
+
+    /// <summary>Provider d'exécution sherpa-onnx (<c>"cpu"</c>).</summary>
+    public string Provider { get; set; } = "cpu";
+
+    /// <summary>Facteur de longueur global (1.0 = vitesse nominale).</summary>
+    public float LengthScale { get; set; } = 1.0f;
+
+    /// <summary>Langue (code ISO 639-1) utilisée si la requête ne précise rien.</summary>
+    public string DefaultLanguage { get; set; } = "fr";
+
+    /// <summary>
+    /// Voix Kokoro par code ISO 639-1. Par défaut le français féminin <c>ff_siwis</c> (speaker id 30
+    /// du modèle <c>kokoro-multi-lang-v1_0</c>), phonémisé par espeak-ng en français (<c>"fr"</c>).
+    /// </summary>
+    public Dictionary<string, KokoroVoice> Voices { get; set; } = new()
     {
-        ["fr"] = new ChatterboxLanguageCheckpoint
-        {
-            Language = "fr",
-            SpeechEncoderModelPath = AppConfiguration.GetModelPath("chatterbox", "speech_encoder.onnx"),
-            EmbedTokensModelPath = AppConfiguration.GetModelPath("chatterbox", "embed_tokens.onnx"),
-            LanguageModelPath = AppConfiguration.GetModelPath("chatterbox", "language_model_q4.onnx"),
-            ConditionalDecoderModelPath = AppConfiguration.GetModelPath("chatterbox", "conditional_decoder.onnx"),
-            TokenizerPath = AppConfiguration.GetModelPath("chatterbox", "tokenizer.json"),
-            DefaultReferenceWav = AppConfiguration.GetModelPath("chatterbox", "fr", "reference.wav"),
-            DefaultReferenceText = "Bonjour, je suis prête à vous parler.",
-            LmVariant = "q4",
-            Exaggeration = 1.3f,
-        },
-        ["en"] = new ChatterboxLanguageCheckpoint
-        {
-            Language = "en",
-            SpeechEncoderModelPath = AppConfiguration.GetModelPath("chatterbox", "speech_encoder.onnx"),
-            EmbedTokensModelPath = AppConfiguration.GetModelPath("chatterbox", "embed_tokens.onnx"),
-            LanguageModelPath = AppConfiguration.GetModelPath("chatterbox", "language_model_q4.onnx"),
-            ConditionalDecoderModelPath = AppConfiguration.GetModelPath("chatterbox", "conditional_decoder.onnx"),
-            TokenizerPath = AppConfiguration.GetModelPath("chatterbox", "tokenizer.json"),
-            DefaultReferenceWav = AppConfiguration.GetModelPath("chatterbox", "en", "reference.wav"),
-            DefaultReferenceText = "Hello, I am ready to talk with you.",
-            LmVariant = "q4",
-            Exaggeration = 0.5f,
-        },
+        ["fr"] = new KokoroVoice { Language = "fr", SpeakerId = 30, EspeakVoice = "fr", Speed = 1.0f },
     };
+}
+
+/// <summary>Voix Kokoro : association langue → (speaker id du modèle, voix espeak-ng, vitesse).</summary>
+public class KokoroVoice
+{
+    /// <summary>Code ISO 639-1 (<c>"fr"</c>).</summary>
+    public string Language { get; set; } = "fr";
+
+    /// <summary>Speaker id dans <c>voices.bin</c> (FR féminin <c>ff_siwis</c> = 30).</summary>
+    public int SpeakerId { get; set; } = 30;
+
+    /// <summary>Code voix espeak-ng pour la phonémisation (<c>"fr"</c>, <c>"en-us"</c>, …).</summary>
+    public string EspeakVoice { get; set; } = "fr";
+
+    /// <summary>Vitesse de parole (1.0 = nominale ; &gt;1 plus rapide).</summary>
+    public float Speed { get; set; } = 1.0f;
 }
 
 public class TranscriptionConfig

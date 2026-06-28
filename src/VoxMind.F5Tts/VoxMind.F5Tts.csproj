@@ -9,16 +9,10 @@
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
-  <!-- ONNX Runtime 1.22.0 : CPU par défaut ; .Gpu via -p:UseCuda=true. Doit rester aligné
-       sur le reste du graphe (un seul package managé actif à la fois). -->
-  <ItemGroup Condition="'$(UseCuda)' == 'true'">
-    <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.22.0" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(UseCuda)' != 'true'">
+  <!-- ONNX Runtime 1.22.0 (CPU). Doit rester aligné sur le reste du graphe
+       (un seul package managé actif à la fois). -->
+  <ItemGroup>
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.22.0" />
   </ItemGroup>
-  <PropertyGroup Condition="'$(UseCuda)' == 'true'">
-    <DefineConstants>$(DefineConstants);CUDA</DefineConstants>
-  </PropertyGroup>
 
 </Project>
