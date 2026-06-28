@@ -5,7 +5,7 @@ Système local de transcription vocale en temps réel avec identification automa
 ## Fonctionnalités
 
 - Transcription vocale temps réel multilingue (Parakeet TDT ONNX v3 — 25 langues européennes, détection de langue automatique, 100% local sans Python)
-- Synthèse vocale **Kokoro** (sherpa-onnx — voix FR féminine prédéfinie, non-autorégressif, très rapide sur CPU ; ou F5-TTS-ONNX — FR + EN, voice cloning ; 100% local sans Python)
+- Synthèse vocale **Kokoro** (sherpa-onnx — multilingue : fr, en, en-gb, es, it, pt, hi, ja, zh ; une voix féminine prédéfinie par langue, non-autorégressif, très rapide sur CPU ; ou F5-TTS-ONNX — FR + EN, voice cloning ; 100% local sans Python)
 - Identification des locuteurs (sherpa-onnx — 100% local, sans Python)
 - Mode écoute continu avec résumés automatiques
 - Communication externe via bridge JSON file-based (Cortana/OpenClaw)
@@ -100,10 +100,23 @@ Deux moteurs, sélectionnés par le champ `model` de la requête (`kokoro` par d
 
 **Kokoro** (modèle 82M non-autorégressif) servi via `sherpa-onnx` (`org.k2fsa.sherpa.onnx`), inférence 100% locale sur **CPU**.
 
-- **Non-autorégressif** : une seule passe ONNX par phrase → RTF très bas (~0.3 mesuré sur ce parc CPU, conteneur sans GPU), bien meilleur que les moteurs autorégressifs.
-- Voix **FR féminine prédéfinie** (`ff_siwis`, speaker id 30 du modèle `kokoro-multi-lang-v1_0`) ; pas de voice cloning.
-- Phonémisation via **espeak-ng** (`DataDir`), langue forcée `fr`, lexique vide (tous les mots phonémisés en français). Sortie WAV 24 kHz mono.
-- Modèle attendu dans `models/kokoro/` : `model.onnx` (fp32 — plus rapide que l'int8 sur CPU sans VNNI), `voices.bin`, `tokens.txt`, `espeak-ng-data/`.
+- **Non-autorégressif** : une seule passe ONNX par phrase → RTF très bas (~0.3–0.4 mesuré sur ce parc CPU, conteneur sans GPU), bien meilleur que les moteurs autorégressifs.
+- **Multilingue** : une voix prédéfinie (féminine) par langue, sélectionnée par le champ `language` de la requête. Pas de voice cloning.
+
+  | `language` | voix Kokoro | speaker id | espeak |
+  |---|---|---|---|
+  | `fr` | ff_siwis | 30 | fr |
+  | `en` | af_heart | 3 | en-us |
+  | `en-gb` | bf_emma | 21 | en-gb-x-rp |
+  | `es` | ef_dora | 28 | es |
+  | `it` | if_sara | 35 | it |
+  | `pt` | pf_dora | 42 | pt-br |
+  | `hi` | hf_alpha | 31 | hi |
+  | `ja` | jf_alpha | 37 | ja (qualité espeak limitée) |
+  | `zh` | zf_xiaoxiao | 47 | cmn + `lexicon-zh.txt` + dict jieba |
+
+- Phonémisation via **espeak-ng** (`DataDir`) : la voix espeak est l'**identifiant de fichier** sous `espeak-ng-data/lang` (insensible à la casse) — un identifiant inconnu fait planter le natif, donc le service valide chaque voix et ignore proprement les langues non résolues. Le **chinois** passe par le lexique `lexicon-zh.txt` + le dict jieba (sans eux, les hanzi sont OOV → audio vide). Sortie WAV 24 kHz mono.
+- Modèle attendu dans `models/kokoro/` : `model.onnx` (fp32 — plus rapide que l'int8 sur CPU sans VNNI), `voices.bin`, `tokens.txt`, `espeak-ng-data/`, plus `lexicon-zh.txt` + `dict/` pour le chinois.
   Téléchargement : [`kokoro-multi-lang-v1_0`](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models) (release `tts-models` de sherpa-onnx).
 
 ### F5-TTS — alternative

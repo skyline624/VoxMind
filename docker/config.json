@@ -33,7 +33,16 @@
         "provider": "cpu",
         "default_language": "fr",
         "voices": {
-          "fr": { "language": "fr", "speaker_id": 30, "espeak_voice": "fr", "speed": 1.0 }
+          "fr":    { "language": "fr",    "speaker_id": 30, "espeak_voice": "fr",    "speed": 1.0 },
+          "en":    { "language": "en",    "speaker_id": 3,  "espeak_voice": "en-us", "speed": 1.0 },
+          "en-gb": { "language": "en-gb", "speaker_id": 21, "espeak_voice": "en-gb-x-rp", "speed": 1.0 },
+          "es":    { "language": "es",    "speaker_id": 28, "espeak_voice": "es",    "speed": 1.0 },
+          "it":    { "language": "it",    "speaker_id": 35, "espeak_voice": "it",    "speed": 1.0 },
+          "pt":    { "language": "pt",    "speaker_id": 42, "espeak_voice": "pt-br", "speed": 1.0 },
+          "hi":    { "language": "hi",    "speaker_id": 31, "espeak_voice": "hi",    "speed": 1.0 },
+          "ja":    { "language": "ja",    "speaker_id": 37, "espeak_voice": "ja",    "speed": 1.0 },
+          "zh":    { "language": "zh",    "speaker_id": 47, "espeak_voice": "cmn",   "speed": 1.0,
+                     "lexicon": "/app/models/kokoro/lexicon-zh.txt", "dict_dir": "/app/models/kokoro/dict" }
         }
       }
     }

@@ -46,9 +46,16 @@ public sealed class KokoroTtsService : ITtsService
         _config = config;
         _logger = logger;
 
-        var available = config.Voices.Keys
-            .Where(_ => ModelFilesExist())
+        // On n'expose QUE les langues dont la voix espeak existe réellement dans DataDir/lang :
+        // passer une voix espeak inconnue à sherpa fait planter le PROCESS natif (std::terminate,
+        // « Failed to set eSpeak-ng voice ») — non rattrapable côté managé. On filtre donc en amont.
+        var modelOk = ModelFilesExist();
+        var available = config.Voices
+            .Where(kv => modelOk && EspeakVoiceAvailable(config.Voices[kv.Key].EspeakVoice))
+            .Select(kv => kv.Key)
             .ToArray();
+
+        var rejected = config.Voices.Keys.Except(available).ToArray();
 
         _info = new TtsModelInfo
         {
@@ -58,7 +65,7 @@ public sealed class KokoroTtsService : ITtsService
             AvailableLanguages = available,
         };
 
-        if (available.Length == 0)
+        if (!modelOk)
         {
             _logger.LogWarning(
                 "Kokoro : fichiers modèle introuvables (model={Model}, voices={Voices}, tokens={Tokens}, dataDir={DataDir}). " +
@@ -70,6 +77,10 @@ public sealed class KokoroTtsService : ITtsService
             _logger.LogInformation(
                 "Kokoro : {N} langue(s) disponible(s) ({Langs}), modèle {Model}.",
                 available.Length, string.Join(", ", available), config.ModelPath);
+            if (rejected.Length > 0)
+                _logger.LogWarning(
+                    "Kokoro : {N} langue(s) IGNORÉE(S) (voix espeak introuvable dans {DataDir}/lang) : {Langs}.",
+                    rejected.Length, config.DataDir, string.Join(", ", rejected));
         }
     }
 
@@ -90,6 +101,11 @@ public sealed class KokoroTtsService : ITtsService
         var lang = ResolveLanguage(language);
         var voice = _config.Voices[lang];
 
+        // Garde-fou : une voix espeak inconnue ferait planter le process natif (cf. constructeur).
+        if (!EspeakVoiceAvailable(voice.EspeakVoice))
+            throw new NotSupportedException(
+                $"Kokoro : voix espeak '{voice.EspeakVoice}' introuvable dans {_config.DataDir}/lang (langue '{lang}').");
+
         var cleaned = CleanText(text);
         if (string.IsNullOrWhiteSpace(cleaned))
             cleaned = text.Trim();
@@ -99,7 +115,7 @@ public sealed class KokoroTtsService : ITtsService
         var pcm = await Task.Run(() =>
         {
             ct.ThrowIfCancellationRequested();
-            var engine = GetEngine(voice.EspeakVoice);
+            var engine = GetEngine(voice);
             // L'API native n'est pas garantie réentrante : on sérialise les générations.
             lock (_genLock)
             {
@@ -138,23 +154,36 @@ public sealed class KokoroTtsService : ITtsService
         };
     }
 
-    /// <summary>Charge (ou réutilise) l'<see cref="OfflineTts"/> Kokoro pour une voix espeak donnée.</summary>
-    private OfflineTts GetEngine(string espeakVoice)
-        => _engines.GetOrAdd(espeakVoice, ev => new Lazy<OfflineTts>(() => BuildEngine(ev),
-                LazyThreadSafetyMode.ExecutionAndPublication)).Value;
-
-    private OfflineTts BuildEngine(string espeakVoice)
+    /// <summary>
+    /// Charge (ou réutilise) l'<see cref="OfflineTts"/> Kokoro pour une voix donnée. Le lexique et le
+    /// dossier dict sont GLOBAUX à l'instance native : le chinois (mandarin) requiert
+    /// <c>lexicon-zh.txt</c> + le dict jieba (sinon les hanzi sont OOV → audio vide), tandis que les
+    /// langues espeak-only utilisent un lexique vide. On cache donc une instance par triplet
+    /// (voix espeak, lexique, dict).
+    /// </summary>
+    private OfflineTts GetEngine(KokoroVoice voice)
     {
-        _logger.LogInformation("Kokoro : chargement du modèle (espeak lang '{Lang}', {Threads} threads)…",
-            espeakVoice, _config.NumThreads);
+        var lexicon = string.IsNullOrEmpty(voice.Lexicon) ? (_config.Lexicon ?? string.Empty) : voice.Lexicon;
+        var dictDir = string.IsNullOrEmpty(voice.DictDir) ? (_config.DictDir ?? string.Empty) : voice.DictDir;
+        var key = $"{voice.EspeakVoice}|{lexicon}|{dictDir}";
+        return _engines.GetOrAdd(key, _ => new Lazy<OfflineTts>(
+            () => BuildEngine(voice.EspeakVoice, lexicon, dictDir),
+            LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+    }
+
+    private OfflineTts BuildEngine(string espeakVoice, string lexicon, string dictDir)
+    {
+        _logger.LogInformation(
+            "Kokoro : chargement du modèle (espeak '{Lang}', {Threads} threads, lexicon='{Lex}', dict='{Dict}')…",
+            espeakVoice, _config.NumThreads, lexicon, dictDir);
 
         var config = new OfflineTtsConfig();
         config.Model.Kokoro.Model = _config.ModelPath;
         config.Model.Kokoro.Voices = _config.VoicesPath;
         config.Model.Kokoro.Tokens = _config.TokensPath;
         config.Model.Kokoro.DataDir = _config.DataDir;
-        config.Model.Kokoro.DictDir = _config.DictDir ?? string.Empty;
-        config.Model.Kokoro.Lexicon = _config.Lexicon ?? string.Empty;
+        config.Model.Kokoro.DictDir = dictDir;
+        config.Model.Kokoro.Lexicon = lexicon;
         config.Model.Kokoro.Lang = espeakVoice;
         config.Model.Kokoro.LengthScale = _config.LengthScale;
         config.Model.NumThreads = _config.NumThreads;
@@ -185,6 +214,31 @@ public sealed class KokoroTtsService : ITtsService
         && File.Exists(_config.VoicesPath)
         && File.Exists(_config.TokensPath)
         && Directory.Exists(_config.DataDir);
+
+    // Ensemble des identifiants de voix espeak-ng disponibles = noms de fichiers sous DataDir/lang
+    // (ex. "fr", "en-US", "en-GB-x-rp", "pt-BR", "cmn"). espeak résout SetVoiceByName sur ce nom de
+    // fichier (insensible à la casse), PAS sur les tags "language" internes — d'où la validation ici.
+    private HashSet<string>? _espeakVoices;
+    private bool EspeakVoiceAvailable(string espeakVoice)
+    {
+        if (string.IsNullOrWhiteSpace(espeakVoice)) return false;
+        _espeakVoices ??= LoadEspeakVoiceNames(_config.DataDir);
+        return _espeakVoices.Contains(espeakVoice);
+    }
+
+    private static HashSet<string> LoadEspeakVoiceNames(string dataDir)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var langDir = Path.Combine(dataDir, "lang");
+            if (Directory.Exists(langDir))
+                foreach (var f in Directory.EnumerateFiles(langDir, "*", SearchOption.AllDirectories))
+                    set.Add(Path.GetFileName(f));
+        }
+        catch { /* best effort : en cas d'échec on laisse l'ensemble vide → langues ignorées proprement */ }
+        return set;
+    }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
     // Nettoyage du texte : retire emojis et balisage markdown avant la synthèse (les réponses LLM

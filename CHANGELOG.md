@@ -5,7 +5,8 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 ## [Unreleased]
 
 ### Ajouté
-- Moteur TTS **Kokoro** (modèle 82M non-autorégressif) servi via **sherpa-onnx** (`org.k2fsa.sherpa.onnx`, `OfflineTts` + `OfflineTtsKokoroModelConfig`). Exposé comme moteur `kokoro` (**par défaut**) sur l'endpoint OpenAI-compatible `/v1/audio/speech`. Voix FR féminine prédéfinie (`ff_siwis`, speaker id 30 du modèle `kokoro-multi-lang-v1_0`), phonémisation espeak-ng en français, sortie WAV 24 kHz. Inférence 100% CPU, **RTF ~0.32 mesuré** (contre > 1 pour un moteur autorégressif).
+- Moteur TTS **Kokoro** (modèle 82M non-autorégressif) servi via **sherpa-onnx** (`org.k2fsa.sherpa.onnx`, `OfflineTts` + `OfflineTtsKokoroModelConfig`). Exposé comme moteur `kokoro` (**par défaut**) sur l'endpoint OpenAI-compatible `/v1/audio/speech`. Sortie WAV 24 kHz, inférence 100% CPU, **RTF ~0.3–0.4 mesuré** (contre > 1 pour un moteur autorégressif).
+- Kokoro **multilingue** : une voix féminine prédéfinie par langue (sélection par le champ `language`), modèle `kokoro-multi-lang-v1_0` — `fr` (ff_siwis), `en` (af_heart/en-us), `en-gb` (bf_emma/en-gb-x-rp), `es` (ef_dora), `it` (if_sara), `pt` (pf_dora/pt-br), `hi` (hf_alpha), `ja` (jf_alpha — qualité espeak limitée), `zh` (zf_xiaoxiao/cmn + `lexicon-zh.txt` + dict jieba). Validation des voix espeak (un identifiant inconnu crashait le natif) + lexique/dict configurables par voix.
 
 ### Modifié
 - Moteur TTS par défaut : **Chatterbox → Kokoro** (`default_engine: "kokoro"`).

@@ -216,12 +216,26 @@ public class KokoroConfig
     public string DefaultLanguage { get; set; } = "fr";
 
     /// <summary>
-    /// Voix Kokoro par code ISO 639-1. Par défaut le français féminin <c>ff_siwis</c> (speaker id 30
-    /// du modèle <c>kokoro-multi-lang-v1_0</c>), phonémisé par espeak-ng en français (<c>"fr"</c>).
+    /// Voix Kokoro par code langue. Une voix (féminine de préférence) par langue couverte par le
+    /// modèle <c>kokoro-multi-lang-v1_0</c>, phonémisée par espeak-ng (<see cref="KokoroVoice.EspeakVoice"/>).
+    /// Speaker ids issus du mapping <c>voices.bin</c> (<c>generate_voices_bin.py</c>).
     /// </summary>
     public Dictionary<string, KokoroVoice> Voices { get; set; } = new()
     {
-        ["fr"] = new KokoroVoice { Language = "fr", SpeakerId = 30, EspeakVoice = "fr", Speed = 1.0f },
+        ["fr"]    = new KokoroVoice { Language = "fr",    SpeakerId = 30, EspeakVoice = "fr",    Speed = 1.0f }, // ff_siwis
+        ["en"]    = new KokoroVoice { Language = "en",    SpeakerId = 3,  EspeakVoice = "en-us", Speed = 1.0f }, // af_heart (US)
+        ["en-gb"] = new KokoroVoice { Language = "en-gb", SpeakerId = 21, EspeakVoice = "en-gb-x-rp", Speed = 1.0f }, // bf_emma (GB RP)
+        ["es"]    = new KokoroVoice { Language = "es",    SpeakerId = 28, EspeakVoice = "es",    Speed = 1.0f }, // ef_dora
+        ["it"]    = new KokoroVoice { Language = "it",    SpeakerId = 35, EspeakVoice = "it",    Speed = 1.0f }, // if_sara
+        ["pt"]    = new KokoroVoice { Language = "pt",    SpeakerId = 42, EspeakVoice = "pt-br", Speed = 1.0f }, // pf_dora (BR)
+        ["hi"]    = new KokoroVoice { Language = "hi",    SpeakerId = 31, EspeakVoice = "hi",    Speed = 1.0f }, // hf_alpha
+        ["ja"]    = new KokoroVoice { Language = "ja",    SpeakerId = 37, EspeakVoice = "ja",    Speed = 1.0f }, // jf_alpha
+        ["zh"]    = new KokoroVoice // zf_xiaoxiao (Mandarin) — lexique + dict jieba requis (sinon hanzi OOV)
+        {
+            Language = "zh", SpeakerId = 47, EspeakVoice = "cmn", Speed = 1.0f,
+            Lexicon = AppConfiguration.GetModelPath("kokoro", "lexicon-zh.txt"),
+            DictDir = AppConfiguration.GetModelPath("kokoro", "dict"),
+        },
     };
 }
 
@@ -239,6 +253,15 @@ public class KokoroVoice
 
     /// <summary>Vitesse de parole (1.0 = nominale ; &gt;1 plus rapide).</summary>
     public float Speed { get; set; } = 1.0f;
+
+    /// <summary>
+    /// Lexique(s) de prononciation spécifiques à cette voix (override du <see cref="KokoroConfig.Lexicon"/>
+    /// global). REQUIS pour le chinois (<c>lexicon-zh.txt</c>) : sans lui, les hanzi sont OOV → audio vide.
+    /// </summary>
+    public string Lexicon { get; set; } = string.Empty;
+
+    /// <summary>Dossier dict jieba (segmentation chinoise), override du global. Requis pour le chinois.</summary>
+    public string DictDir { get; set; } = string.Empty;
 }
 
 public class TranscriptionConfig
