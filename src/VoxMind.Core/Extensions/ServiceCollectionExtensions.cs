@@ -8,6 +8,7 @@ using VoxMind.Core.SpeakerRecognition;
 using VoxMind.Core.Transcription;
 using VoxMind.Core.Tts;
 using VoxMind.Core.Vad;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 
 namespace VoxMind.Core.Extensions;
@@ -110,22 +111,44 @@ public static class ServiceCollectionExtensions
                 )
             );
 
+            // Qwen3-TTS via sidecar vLLM-omni (HTTP, GPU) : tier expressif TEMPS RÉEL (RTF ~0,5 sur RTX 3090).
+            // VoxMind est client HTTP du serveur OpenAI-compatible (/v1/audio/speech). Se dégrade en 503 si le
+            // sidecar est injoignable (fenêtre de démarrage ~3-5 min), sans gêner Kokoro.
+            if (config.Ml.Tts.Qwen3Vllm.Enabled)
+            {
+                services.AddHttpClient(Qwen3VllmTtsService.HttpClientName, c =>
+                {
+                    c.BaseAddress = new Uri(config.Ml.Tts.Qwen3Vllm.BaseUrl);
+                    c.Timeout = TimeSpan.FromSeconds(config.Ml.Tts.Qwen3Vllm.TimeoutSeconds);
+                });
+                services.AddSingleton<Qwen3VllmTtsService>(sp =>
+                    new Qwen3VllmTtsService(
+                        config.Ml.Tts.Qwen3Vllm,
+                        sp.GetRequiredService<IHttpClientFactory>(),
+                        sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Qwen3VllmTtsService>>()
+                    )
+                );
+            }
+
             // Registry multi-engine. Ajouter une entrée ici pour brancher Zipvoice / Piper / etc.
             services.AddSingleton<TtsEngineRegistry>(sp =>
-                new TtsEngineRegistry(
-                    new Dictionary<string, ITtsService>
-                    {
-                        ["kokoro"] = sp.GetRequiredService<KokoroTtsService>(),
-                        ["f5"] = sp.GetRequiredService<F5TtsOnnxService>(),
-                        ["xtts"] = sp.GetRequiredService<CoquiXttsTtsService>(),
-                    },
-                    defaultEngine: config.Ml.Tts.DefaultEngine
-                )
-            );
+            {
+                var engines = new Dictionary<string, ITtsService>
+                {
+                    ["kokoro"] = sp.GetRequiredService<KokoroTtsService>(),
+                    ["f5"] = sp.GetRequiredService<F5TtsOnnxService>(),
+                    ["xtts"] = sp.GetRequiredService<CoquiXttsTtsService>(),
+                };
+                if (config.Ml.Tts.Qwen3Vllm.Enabled)
+                    engines["qwen3"] = sp.GetRequiredService<Qwen3VllmTtsService>();
 
-            // Façade <see cref="ITtsService"/> = le moteur par défaut, pratique pour la CLI.
+                // Moteur par défaut = config (mis à "qwen3" dans la config conteneur). L'appelant force via model=.
+                return new TtsEngineRegistry(engines, config.Ml.Tts.DefaultEngine);
+            });
+
+            // Façade <see cref="ITtsService"/> = le moteur par défaut effectif (tiering), pratique pour la CLI.
             services.AddSingleton<ITtsService>(sp =>
-                sp.GetRequiredService<TtsEngineRegistry>().Get(config.Ml.Tts.DefaultEngine));
+                sp.GetRequiredService<TtsEngineRegistry>().Get());
         }
 
         // Speaker recognition — sherpa-onnx (local, sans serveur Python).

@@ -170,6 +170,12 @@ public class TtsConfig
     /// Modèle multilingue <c>kokoro-multi-lang-v1_0</c> : voix FR féminine <c>ff_siwis</c> (sid 30).
     /// </summary>
     public KokoroConfig Kokoro { get; set; } = new();
+
+    /// <summary>
+    /// Configuration du moteur <b>Qwen3-TTS</b> servi par un sidecar <b>vLLM-omni</b> (GPU). Tier expressif
+    /// temps réel (RTF ~0,5 sur RTX 3090) — VoxMind agit en client HTTP du serveur OpenAI-compatible.
+    /// </summary>
+    public Qwen3VllmConfig Qwen3Vllm { get; set; } = new();
 }
 
 /// <summary>
@@ -262,6 +268,81 @@ public class KokoroVoice
 
     /// <summary>Dossier dict jieba (segmentation chinoise), override du global. Requis pour le chinois.</summary>
     public string DictDir { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Paramètres du moteur <b>Qwen3-TTS</b> servi par un sidecar <b>vLLM-omni</b>
+/// (<see cref="VoxMind.Core.Tts.Qwen3VllmTtsService"/>). VoxMind est client HTTP du serveur
+/// OpenAI-compatible <c>POST /v1/audio/speech</c> (port 8091 dans l'image tout-en-un). Mesuré RTF ~0,5
+/// sur RTX 3090 (1.7B) — seul chemin temps réel pour du Qwen3-TTS expressif.
+/// </summary>
+public class Qwen3VllmConfig
+{
+    /// <summary>Active le moteur dans la registry. Désactivé → non enregistré.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>URL de base du sidecar vLLM-omni.</summary>
+    public string BaseUrl { get; set; } = "http://127.0.0.1:8091";
+
+    /// <summary>Nom du modèle servi par le sidecar (champ <c>model</c> de la requête).</summary>
+    public string Model { get; set; } = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice";
+
+    /// <summary>Tâche vLLM-omni : <c>CustomVoice</c> (speaker prédéfini) | <c>VoiceDesign</c> | <c>Base</c>.</summary>
+    public string TaskType { get; set; } = "CustomVoice";
+
+    /// <summary>Speaker par défaut (CustomVoice). Cross-lingual : <c>Ryan</c>/<c>Aiden</c> rendent le FR.</summary>
+    public string DefaultVoice { get; set; } = "Ryan";
+
+    /// <summary>Instruction de style/émotion par défaut (vide = neutre). Surchargée par la requête.</summary>
+    public string DefaultInstruction { get; set; } = string.Empty;
+
+    /// <summary>Code ISO 639-1 utilisé si la requête ne précise pas la langue.</summary>
+    public string DefaultLanguage { get; set; } = "fr";
+
+    /// <summary>Plafond de tokens audio par requête.</summary>
+    public int MaxNewTokens { get; set; } = 4096;
+
+    /// <summary>Timeout HTTP (s) — la 1ʳᵉ requête après démarrage du sidecar peut être longue.</summary>
+    public int TimeoutSeconds { get; set; } = 300;
+
+    // ── Clonage de voix (TaskType = "Base") ──────────────────────────────────────────────────────────
+    // Requiert un modèle Base servi par le sidecar (ex. Qwen/Qwen3-TTS-12Hz-1.7B-Base). Le service lit
+    // l'audio de référence au démarrage, l'encode en base64 (mis en cache) et l'envoie comme `ref_audio`.
+
+    /// <summary>Chemin d'un WAV de référence (mono 24 kHz idéalement) clonant la voix. Requis si TaskType=Base.</summary>
+    public string? ReferenceAudioPath { get; set; }
+
+    /// <summary>
+    /// Transcription de l'audio de référence. Fournie → mode <b>ICL</b> (meilleure fidélité) ; vide → clonage
+    /// par embedding seul. Le clonage passe par l'upload de la voix (<c>/v1/audio/voices</c>, qui calcule le
+    /// <c>ref_code</c> requis par l'ICL) ; l'envoi inline de <c>ref_audio</c> n'est PAS utilisé (il fait crasher
+    /// le moteur en ICL : « ref_audio artifact cache entry is missing ref_code »).
+    /// </summary>
+    public string? ReferenceText { get; set; }
+
+    /// <summary>Nom sous lequel la voix clonée est enregistrée auprès du sidecar, puis réutilisée par requête.</summary>
+    public string ReferenceVoiceName { get; set; } = "voxmind_clone";
+
+    /// <summary>Mention de consentement transmise à l'upload de voix (champ obligatoire du serveur).</summary>
+    public string Consent { get; set; } = "Voix clonée via VoxMind avec l'autorisation de l'utilisateur.";
+
+    /// <summary>Obsolète : le clonage passe désormais par l'upload de voix (ICL si <see cref="ReferenceText"/>).</summary>
+    public bool XVectorOnly { get; set; } = true;
+
+    /// <summary>Table ISO 639-1 → nom de langue attendu par vLLM-omni (les 10 langues de Qwen3-TTS).</summary>
+    public Dictionary<string, string> Languages { get; set; } = new()
+    {
+        ["fr"] = "French",
+        ["en"] = "English",
+        ["de"] = "German",
+        ["es"] = "Spanish",
+        ["it"] = "Italian",
+        ["pt"] = "Portuguese",
+        ["ru"] = "Russian",
+        ["zh"] = "Chinese",
+        ["ja"] = "Japanese",
+        ["ko"] = "Korean",
+    };
 }
 
 public class TranscriptionConfig

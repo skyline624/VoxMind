@@ -69,9 +69,16 @@ try
     builder.Services.AddHealthChecks();
     builder.Services.AddProblemDetails();
 
-    // Upload de fichiers audio (limite 500 MB)
     builder.WebHost.ConfigureKestrel(opt =>
-        opt.Limits.MaxRequestBodySize = 500 * 1024 * 1024);
+    {
+        // Upload de fichiers audio (limite 500 MB)
+        opt.Limits.MaxRequestBodySize = 500 * 1024 * 1024;
+
+        // Le streaming TTS (/v1/audio/speech) écrit le PCM par blocs via WavWriter (Stream.Write synchrone,
+        // suivi d'un FlushAsync). Kestrel interdit l'IO synchrone par défaut → on l'autorise pour ces
+        // écritures bufferisées, sinon « Synchronous operations are disallowed » coupe le flux audio.
+        opt.AllowSynchronousIO = true;
+    });
 
     // ── Pipeline ───────────────────────────────────────────────────────────────
     var app = builder.Build();

@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Text;
-using System.Text.RegularExpressions;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using SherpaOnnx;
 using VoxMind.Core.Configuration;
@@ -89,7 +88,83 @@ public sealed class KokoroTtsService : ITtsService
         string? language = null,
         byte[]? referenceWav = null,        // ignoré : Kokoro ne fait pas de voice cloning
         string? referenceText = null,       // ignoré
+        string? instructions = null,        // ignoré : Kokoro n'a pas de contrôle d'émotion
         CancellationToken ct = default)
+    {
+        var (lang, voice, cleaned) = PrepareSynthesis(text, language);
+
+        var sw = Stopwatch.StartNew();
+        var pcm = await Task.Run(() => GenerateOne(voice, cleaned, ct), ct).ConfigureAwait(false);
+        sw.Stop();
+
+        double durationSec = pcm.Length / (double)SampleRate;
+        double rtf = durationSec > 0 ? sw.Elapsed.TotalSeconds / durationSec : 0;
+        _logger.LogInformation(
+            "Kokoro synthèse {Lang} (voix {Voice}, sid {Sid}) : {Chars} char → {Samples} samples " +
+            "({Duration:F2}s) en {Latency} ms (RTF {Rtf:F3}).",
+            lang, voice.EspeakVoice, voice.SpeakerId, cleaned.Length, pcm.Length,
+            durationSec, sw.ElapsedMilliseconds, rtf);
+
+        return new TtsResult
+        {
+            Pcm = pcm,
+            SampleRate = SampleRate,
+            Language = lang,
+            SynthesisLatency = sw.Elapsed,
+        };
+    }
+
+    /// <summary>
+    /// Variante streaming : Kokoro étant non-autorégressif (une passe ONNX par phrase), on synthétise et on
+    /// émet <b>phrase par phrase</b>. Le premier son part dès la 1ʳᵉ phrase au lieu d'attendre toute la
+    /// réponse ; l'endpoint pousse chaque segment en chunked transfer. Le RTF Kokoro étant ~0.05 sur CPU,
+    /// la synthèse devance largement la lecture côté client → enchaînement sans blanc.
+    /// </summary>
+    public async IAsyncEnumerable<TtsResult> SynthesizeStreamAsync(
+        string text,
+        string? language = null,
+        string? instructions = null,        // ignoré : Kokoro n'a pas de contrôle d'émotion
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var (lang, voice, cleaned) = PrepareSynthesis(text, language);
+
+        var sw = Stopwatch.StartNew();
+        int sentences = 0;
+        long totalSamples = 0;
+
+        foreach (var sentence in TtsTextSegmenter.SplitSentences(cleaned))
+        {
+            ct.ThrowIfCancellationRequested();
+            var pcm = await Task.Run(() => GenerateOne(voice, sentence, ct), ct).ConfigureAwait(false);
+            if (pcm.Length == 0)
+                continue;
+
+            sentences++;
+            totalSamples += pcm.Length;
+            yield return new TtsResult
+            {
+                Pcm = pcm,
+                SampleRate = SampleRate,
+                Language = lang,
+                SynthesisLatency = sw.Elapsed,
+            };
+        }
+
+        sw.Stop();
+        double durationSec = totalSamples / (double)SampleRate;
+        double rtf = durationSec > 0 ? sw.Elapsed.TotalSeconds / durationSec : 0;
+        _logger.LogInformation(
+            "Kokoro synthèse streaming {Lang} (voix {Voice}, sid {Sid}) : {Chars} char → {Sentences} segment(s), " +
+            "{Samples} samples ({Duration:F2}s) en {Latency} ms (RTF {Rtf:F3}).",
+            lang, voice.EspeakVoice, voice.SpeakerId, cleaned.Length, sentences, totalSamples,
+            durationSec, sw.ElapsedMilliseconds, rtf);
+    }
+
+    /// <summary>
+    /// Valide la requête (texte non vide, modèle présent, voix espeak disponible), résout la langue et la
+    /// voix, et nettoie le texte. Factorisé entre la synthèse bufferisée et la synthèse streaming.
+    /// </summary>
+    private (string Lang, KokoroVoice Voice, string Cleaned) PrepareSynthesis(string text, string? language)
     {
         if (string.IsNullOrWhiteSpace(text))
             throw new ArgumentException("Le texte à synthétiser est vide.", nameof(text));
@@ -106,52 +181,36 @@ public sealed class KokoroTtsService : ITtsService
             throw new NotSupportedException(
                 $"Kokoro : voix espeak '{voice.EspeakVoice}' introuvable dans {_config.DataDir}/lang (langue '{lang}').");
 
-        var cleaned = CleanText(text);
+        var cleaned = TtsTextSegmenter.CleanText(text);
         if (string.IsNullOrWhiteSpace(cleaned))
             cleaned = text.Trim();
 
-        var sw = Stopwatch.StartNew();
+        return (lang, voice, cleaned);
+    }
 
-        var pcm = await Task.Run(() =>
+    /// <summary>Synthétise un fragment de texte en PCM mono float32 (passe Generate native sérialisée).</summary>
+    private float[] GenerateOne(KokoroVoice voice, string text, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var engine = GetEngine(voice);
+        // L'API native n'est pas garantie réentrante : on sérialise les générations.
+        lock (_genLock)
         {
-            ct.ThrowIfCancellationRequested();
-            var engine = GetEngine(voice);
-            // L'API native n'est pas garantie réentrante : on sérialise les générations.
-            lock (_genLock)
+            // OfflineTtsGeneratedAudio expose Dispose() mais n'implémente pas IDisposable :
+            // on libère le buffer natif explicitement en finally.
+            var audio = engine.Generate(text, voice.Speed, voice.SpeakerId);
+            try
             {
-                // OfflineTtsGeneratedAudio expose Dispose() mais n'implémente pas IDisposable :
-                // on libère le buffer natif explicitement en finally.
-                var audio = engine.Generate(cleaned, voice.Speed, voice.SpeakerId);
-                try
-                {
-                    var samples = audio.Samples;
-                    var copy = new float[samples.Length];
-                    Array.Copy(samples, copy, samples.Length);
-                    return copy;
-                }
-                finally
-                {
-                    audio.Dispose();
-                }
+                var samples = audio.Samples;
+                var copy = new float[samples.Length];
+                Array.Copy(samples, copy, samples.Length);
+                return copy;
             }
-        }, ct).ConfigureAwait(false);
-
-        sw.Stop();
-        double durationSec = pcm.Length / (double)SampleRate;
-        double rtf = durationSec > 0 ? sw.Elapsed.TotalSeconds / durationSec : 0;
-        _logger.LogInformation(
-            "Kokoro synthèse {Lang} (voix {Voice}, sid {Sid}) : {Chars} char → {Samples} samples " +
-            "({Duration:F2}s) en {Latency} ms (RTF {Rtf:F3}).",
-            lang, voice.EspeakVoice, voice.SpeakerId, cleaned.Length, pcm.Length,
-            durationSec, sw.ElapsedMilliseconds, rtf);
-
-        return new TtsResult
-        {
-            Pcm = pcm,
-            SampleRate = SampleRate,
-            Language = lang,
-            SynthesisLatency = sw.Elapsed,
-        };
+            finally
+            {
+                audio.Dispose();
+            }
+        }
     }
 
     /// <summary>
@@ -238,82 +297,6 @@ public sealed class KokoroTtsService : ITtsService
         }
         catch { /* best effort : en cas d'échec on laisse l'ensemble vide → langues ignorées proprement */ }
         return set;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────────────────
-    // Nettoyage du texte : retire emojis et balisage markdown avant la synthèse (les réponses LLM
-    // sont truffées de markdown/emojis qui parasitent la phonémisation). Kokoro/sherpa découpe
-    // ensuite le texte en phrases en interne, donc on passe le texte nettoyé entier.
-    // ─────────────────────────────────────────────────────────────────────────────────────────
-    internal static string CleanText(string text)
-    {
-        if (string.IsNullOrEmpty(text)) return string.Empty;
-
-        text = RemoveEmojis(text);
-
-        // Code (blocs ``` puis inline `…`).
-        text = Regex.Replace(text, "```[^\n]*", "");
-        text = Regex.Replace(text, "`([^`]*)`", "$1");
-
-        // Images puis liens markdown : ne garder que le libellé.
-        text = Regex.Replace(text, @"!\[([^\]]*)\]\([^)]*\)", "$1");
-        text = Regex.Replace(text, @"\[([^\]]*)\]\([^)]*\)", "$1");
-
-        // Préfixes de ligne (titres, citations, règles, puces).
-        text = Regex.Replace(text, @"(?m)^[ \t]{0,3}#{1,6}[ \t]*", "");
-        text = Regex.Replace(text, @"(?m)^[ \t]{0,3}>+[ \t]?", "");
-        text = Regex.Replace(text, @"(?m)^[ \t]{0,3}([-*_])([ \t]*\1){2,}[ \t]*$", "");
-        text = Regex.Replace(text, @"(?m)^[ \t]{0,3}[-*+][ \t]+", "");
-
-        // Emphase & barré.
-        text = Regex.Replace(text, @"\*\*([^*]+)\*\*", "$1");
-        text = Regex.Replace(text, @"__([^_]+)__", "$1");
-        text = Regex.Replace(text, @"~~([^~]+)~~", "$1");
-        text = Regex.Replace(text, @"\*([^*\n]+)\*", "$1");
-        text = Regex.Replace(text, @"(?<![A-Za-z0-9])_([^_\n]+)_(?![A-Za-z0-9])", "$1");
-
-        // Retours à la ligne → frontières de phrase.
-        var sb = new StringBuilder();
-        foreach (var raw in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
-        {
-            var line = raw.Trim();
-            if (line.Length == 0) continue;
-            if (sb.Length > 0)
-            {
-                char last = sb[sb.Length - 1];
-                sb.Append(".!?…:;".IndexOf(last) >= 0 ? " " : ". ");
-            }
-            sb.Append(line);
-        }
-        text = sb.ToString();
-
-        // Normalisation espaces / ponctuation.
-        text = Regex.Replace(text, @"[ \t]+", " ");
-        text = Regex.Replace(text, @"\s+([.,!?…;:])", "$1");
-        text = Regex.Replace(text, @"([!?])\1+", "$1");
-        text = Regex.Replace(text, @"\.{2,}", ".");
-        return text.Trim();
-    }
-
-    /// <summary>Retire emojis/pictogrammes par plage de code-point (insensible à l'encodage du source).</summary>
-    private static string RemoveEmojis(string text)
-    {
-        var sb = new StringBuilder(text.Length);
-        foreach (var rune in text.EnumerateRunes())
-        {
-            int cp = rune.Value;
-            bool pictograph =
-                cp >= 0x10000 ||
-                (cp >= 0x2190 && cp <= 0x21FF) ||
-                (cp >= 0x2300 && cp <= 0x23FF) ||
-                (cp >= 0x25A0 && cp <= 0x25FF) ||
-                (cp >= 0x2600 && cp <= 0x27BF) ||
-                (cp >= 0x2B00 && cp <= 0x2BFF) ||
-                (cp >= 0xFE00 && cp <= 0xFE0F) ||
-                cp == 0x200D || cp == 0x20E3 || cp == 0x2122 || cp == 0x2139;
-            if (!pictograph) sb.Append(rune.ToString());
-        }
-        return sb.ToString();
     }
 
     public void Dispose()

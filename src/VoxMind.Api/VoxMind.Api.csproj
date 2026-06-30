@@ -19,14 +19,25 @@
   </ItemGroup>
 
 
-  <!-- Force sherpa-onnx onnxruntime (1.23.2) to win over ML.OnnxRuntime (1.19.x) -->
+  <!-- Force sherpa-onnx onnxruntime (1.23.2) to win over ML.OnnxRuntime : sherpa-onnx-c-api.so exige
+       VERS_1.23.2, absent du libonnxruntime.so de Microsoft.ML.OnnxRuntime 1.22.0. -->
+  <ItemGroup>
+    <SherpaOnnxRuntimeLib Include="$(NuGetPackageRoot)org.k2fsa.sherpa.onnx.runtime.linux-x64\1.12.32\runtimes\linux-x64\native\libonnxruntime.so" />
+  </ItemGroup>
+
+  <!-- ...côté build (dotnet run / tests). -->
   <Target Name="CopySherpaOnnxRuntime" AfterTargets="Build">
-    <ItemGroup>
-      <SherpaLib Include="$(NuGetPackageRoot)org.k2fsa.sherpa.onnx.runtime.linux-x64\1.12.32\runtimes\linux-x64\native\libonnxruntime.so" />
-    </ItemGroup>
-    <Copy SourceFiles="@(SherpaLib)"
+    <Copy SourceFiles="@(SherpaOnnxRuntimeLib)"
           DestinationFolder="$(OutDir)runtimes\linux-x64\native\"
-          OverwriteReadOnlyFiles="true" />
+          OverwriteReadOnlyFiles="true" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- ...côté publish (image Docker) : le pipeline de publication redépose le libonnxruntime.so de
+       ML.OnnxRuntime dans $(PublishDir) ; on le réécrase APRÈS par celui de sherpa (1.23.2). -->
+  <Target Name="CopySherpaOnnxRuntimePublish" AfterTargets="Publish">
+    <Copy SourceFiles="@(SherpaOnnxRuntimeLib)"
+          DestinationFolder="$(PublishDir)runtimes\linux-x64\native\"
+          OverwriteReadOnlyFiles="true" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

@@ -74,7 +74,7 @@ public static class SpeakCommand
 
             try
             {
-                var result = await tts.SynthesizeAsync(text, language, voiceBytes, voiceText, ct);
+                var result = await tts.SynthesizeAsync(text, language, voiceBytes, voiceText, ct: ct);
                 await File.WriteAllBytesAsync(output, result.ToWavBytes(), ct);
 
                 ColorConsole.WriteSuccess($"WAV écrit : {output} ({result.Duration:s\\.f}s, {result.SynthesisLatency.TotalMilliseconds:F0} ms latence).");

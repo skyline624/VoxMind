@@ -61,7 +61,7 @@ public class ConfigurationLoaderTests : IDisposable
         // Assert
         Assert.Equal(16000, loaded.Audio.DefaultSampleRate); // Valeur par défaut
         Assert.Equal(100, loaded.Audio.DefaultChunkDurationMs);
-        Assert.Equal(0.7f, loaded.Ml.SpeakerRecognition.ConfidenceThreshold);
+        Assert.Equal(0.55f, loaded.Ml.SpeakerRecognition.ConfidenceThreshold); // défaut permissif (cf. SpeakerRecognitionConfig)
     }
 
     [Fact]

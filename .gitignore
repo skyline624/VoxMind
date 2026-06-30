@@ -72,6 +72,14 @@ desktop.ini
 # VoxMind
 .vexp
 VoxMind-*
+# Docker Qwen3-TTS : workdir/sorties (clone, builds natifs, modèles GGUF, WAV) — volumineux
+.qwen3-docker/
+# Harnais d'expérimentation Qwen3-TTS (remplacés par docker/voxmind/) — scratch
+docker/qwen3-tts/
+docker/qwen3-tts-official/
+docker/qwen3-tts-vllm/
+# Voix de référence pour le clonage (audio fourni par l'utilisateur) — hors versionnage
+voice_data/voices/
 .claude
 .vscode
 tools/

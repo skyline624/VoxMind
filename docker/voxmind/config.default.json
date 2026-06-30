@@ -1,0 +1,15 @@
+{
+  "ml": {
+    "tts": {
+      "default_engine": "qwen3",
+      "qwen3_vllm": {
+        "enabled": true,
+        "base_url": "http://127.0.0.1:8091",
+        "model": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        "task_type": "CustomVoice",
+        "default_voice": "Ryan",
+        "default_language": "fr"
+      }
+    }
+  }
+}

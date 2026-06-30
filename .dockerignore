@@ -15,3 +15,10 @@
 *.user
 *.log
 *.onnx
+*.gguf
+*.pt
+# Dossiers de bench/diagnostic TTS (volumineux : clone qwen3-tts.cpp, builds, modèles) — hors image
+/.qwen3-docker/
+/docker/qwen3-tts/
+/docker/qwen3-tts-official/
+/docker/qwen3-tts-vllm/

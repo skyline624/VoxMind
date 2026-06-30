@@ -32,6 +32,7 @@ public sealed class CoquiXttsTtsService : ITtsService
         string? language = null,
         byte[]? referenceWav = null,
         string? referenceText = null,
+        string? instructions = null,
         CancellationToken ct = default)
     {
         _logger.LogError(

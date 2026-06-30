@@ -1,0 +1,5 @@
+Bonjour et bienvenue dans cette démonstration de synthèse vocale en français. L'objectif de ce test est de mesurer la vitesse de génération sur une carte graphique, afin de vérifier que la lecture peut se faire en direct, sans interruption ni latence perceptible pour l'auditeur.
+
+Nous lisons ici un texte volontairement long, composé de plusieurs phrases de tailles différentes. Certaines sont courtes. D'autres, au contraire, s'étirent davantage et enchaînent plusieurs propositions, avec des virgules, des pauses, et même quelques chiffres : douze, trois cent quarante-cinq, et mille neuf cent quatre-vingt-dix-huit.
+
+La stabilité sur la durée est essentielle : un bon modèle ne doit ni accélérer, ni dériver, ni perdre le fil de la prosodie après trente secondes de parole continue. Si le facteur temps réel reste inférieur à un, alors la synthèse est plus rapide que l'écoute, et la lecture en continu devient possible. Merci de votre attention, et à très bientôt.

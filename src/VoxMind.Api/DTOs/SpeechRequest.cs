@@ -13,5 +13,6 @@ public sealed record SpeechRequest(
     [property: JsonPropertyName("language")] string? Language = null,
     [property: JsonPropertyName("model")] string? Model = null,
     [property: JsonPropertyName("voice")] string? Voice = null,
-    [property: JsonPropertyName("response_format")] string? ResponseFormat = "wav"
+    [property: JsonPropertyName("response_format")] string? ResponseFormat = "wav",
+    [property: JsonPropertyName("instructions")] string? Instructions = null
 );

@@ -23,6 +23,8 @@
     <!-- DI & Hosting -->
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+    <!-- Client HTTP typé/nommé (IHttpClientFactory) — moteur TTS Qwen3 via sidecar vLLM-omni -->
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
 
     <!-- Logging -->
     <PackageReference Include="Serilog" Version="3.1.1" />
