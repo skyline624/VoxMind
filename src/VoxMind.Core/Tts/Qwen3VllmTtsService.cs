@@ -47,14 +47,23 @@ public sealed class Qwen3VllmTtsService : ITtsService
     private readonly byte[]? _refAudioBytes;     // WAV de référence préchargé (uploadé au sidecar à la demande)
     private readonly SemaphoreSlim _registerLock = new(1, 1);
     private volatile bool _voiceRegistered;      // la voix clonée est enregistrée auprès du sidecar courant
+    private readonly string _backendName;        // "qwen3" | "voxtral" : quel backend cette instance représente
+    private readonly VllmBackendManager? _manager;   // état du backend actif + demande de bascule (null en test)
 
     public TtsModelInfo Info => _info;
 
-    public Qwen3VllmTtsService(Qwen3VllmConfig config, IHttpClientFactory httpFactory, ILogger<Qwen3VllmTtsService> logger)
+    public Qwen3VllmTtsService(
+        Qwen3VllmConfig config,
+        IHttpClientFactory httpFactory,
+        ILogger<Qwen3VllmTtsService> logger,
+        string backendName = "qwen3",
+        VllmBackendManager? manager = null)
     {
         _config = config;
         _httpFactory = httpFactory;
         _logger = logger;
+        _backendName = string.IsNullOrWhiteSpace(backendName) ? "qwen3" : backendName.Trim().ToLowerInvariant();
+        _manager = manager;
 
         // Clonage (TaskType = "Base") : précharge le WAV de référence (uploadé au sidecar à la 1ʳᵉ synthèse).
         _isCloning = string.Equals(config.TaskType, "Base", StringComparison.OrdinalIgnoreCase);
@@ -81,7 +90,7 @@ public sealed class Qwen3VllmTtsService : ITtsService
         var languages = config.Languages.Count > 0 ? config.Languages.Keys.ToArray() : Array.Empty<string>();
         _info = new TtsModelInfo
         {
-            EngineName = "qwen3",
+            EngineName = _backendName,
             Backend = ComputeBackend.CUDA,    // exécuté sur GPU côté sidecar vLLM
             // En mode clonage, on exige la référence (sinon le sidecar renverrait 400) → 503 propre via l'endpoint.
             IsLoaded = config.Enabled && languages.Length > 0 && (!_isCloning || _refAudioBytes is not null),
@@ -103,16 +112,25 @@ public sealed class Qwen3VllmTtsService : ITtsService
         byte[]? referenceWav = null,        // ignoré en v1 (voix CustomVoice par speaker, pas de clonage)
         string? referenceText = null,       // ignoré
         string? instructions = null,
+        string? voice = null,
         CancellationToken ct = default)
     {
-        var (iso, vllmLang, voice, cleaned) = Prepare(text, language);
+        // Bascule de backend : si CE moteur (qwen3/voxtral) n'est pas celui servi par le sidecar, on demande
+        // le rechargement (le watcher du conteneur s'en charge) et on renvoie 503 le temps du reload (~3 min).
+        if (_manager is not null && !string.Equals(_backendName, _manager.ActiveBackend, StringComparison.OrdinalIgnoreCase))
+        {
+            _manager.RequestSwitch(_backendName);
+            throw Unavailable(null, $"bascule du TTS vers « {_backendName} » demandée — rechargement du modèle en cours (~3 min), réessayez");
+        }
+
+        var (iso, vllmLang, resolvedVoice, cleaned) = Prepare(text, language, voice);
 
         // Clonage : s'assure que la voix de référence est enregistrée auprès du sidecar courant (idempotent).
         if (_isCloning)
             await EnsureClonedVoiceAsync(ct).ConfigureAwait(false);
 
         var sw = Stopwatch.StartNew();
-        using var resp = await SendAsync(BuildPayload(cleaned, vllmLang, voice, instructions, stream: false), ct).ConfigureAwait(false);
+        using var resp = await SendAsync(BuildPayload(cleaned, vllmLang, resolvedVoice, instructions, stream: false), ct).ConfigureAwait(false);
         var bytes = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
         var pcm = DecodePcm16(bytes, bytes.Length);
         sw.Stop();
@@ -131,7 +149,8 @@ public sealed class Qwen3VllmTtsService : ITtsService
     // ── Helpers ────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Valide la requête, résout langue (ISO + nom vLLM) et voix, nettoie le texte.</summary>
-    private (string Iso, string VllmLang, string Voice, string Cleaned) Prepare(string text, string? language)
+    /// <param name="requestVoice">Voix demandée par la requête ; prime sur la voix par défaut (hors clonage).</param>
+    private (string Iso, string VllmLang, string Voice, string Cleaned) Prepare(string text, string? language, string? requestVoice = null)
     {
         if (string.IsNullOrWhiteSpace(text))
             throw new ArgumentException("Le texte à synthétiser est vide.", nameof(text));
@@ -142,7 +161,9 @@ public sealed class Qwen3VllmTtsService : ITtsService
             ? language!
             : DefaultIso();
         var vllmLang = _config.Languages[iso];
-        var voice = _config.DefaultVoice;
+        // Voix : la requête prime (per-requête, ex. « fr_male » Voxtral) ; sinon la voix par défaut du profil.
+        // En mode clonage, BuildPayload ignore cette valeur (voix = référence enregistrée).
+        var voice = string.IsNullOrWhiteSpace(requestVoice) ? _config.DefaultVoice : requestVoice!.Trim();
 
         var cleaned = TtsTextSegmenter.CleanText(text);
         if (string.IsNullOrWhiteSpace(cleaned))

@@ -78,7 +78,7 @@ public static class SpeechEndpoints
         // On tire le 1ᵉʳ segment AVANT d'ouvrir le flux de réponse : les erreurs de configuration (modèle
         // absent, voix espeak inconnue) remontent ainsi en 503 propre, plutôt qu'en flux tronqué une fois
         // les en-têtes 200 déjà envoyés.
-        var enumerator = engine.SynthesizeStreamAsync(request.Input, language, request.Instructions, ct).GetAsyncEnumerator(ct);
+        var enumerator = engine.SynthesizeStreamAsync(request.Input, language, request.Instructions, request.Voice, ct).GetAsyncEnumerator(ct);
         bool hasFirst;
         try
         {

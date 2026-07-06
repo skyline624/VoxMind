@@ -21,7 +21,8 @@ public class TtsEngineRegistryTests
         }
         public Task<TtsResult> SynthesizeAsync(
             string text, string? language = null, byte[]? referenceWav = null,
-            string? referenceText = null, string? instructions = null, CancellationToken ct = default)
+            string? referenceText = null, string? instructions = null, string? voice = null,
+            CancellationToken ct = default)
             => throw new NotImplementedException();
         public void Dispose() { }
     }

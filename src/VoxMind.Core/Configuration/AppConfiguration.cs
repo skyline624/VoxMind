@@ -176,6 +176,24 @@ public class TtsConfig
     /// temps réel (RTF ~0,5 sur RTX 3090) — VoxMind agit en client HTTP du serveur OpenAI-compatible.
     /// </summary>
     public Qwen3VllmConfig Qwen3Vllm { get; set; } = new();
+
+    /// <summary>
+    /// Profil <b>Voxtral-TTS</b> (Mistral) servi par le même sidecar vLLM-omni, à la place de Qwen3 selon le
+    /// backend actif (<see cref="BackendStateFile"/>). 20 voix presets, pas de clonage. Un seul modèle à la
+    /// fois (GPU) ; le client sélectionne via <c>model:"voxtral"</c> (déclenche un reload ~3 min).
+    /// </summary>
+    public Qwen3VllmConfig VoxtralVllm { get; set; } = new()
+    {
+        Model = "mistralai/Voxtral-4B-TTS-2603",
+        TaskType = "",              // Voxtral n'utilise pas task_type (voix = preset)
+        DefaultVoice = "fr_female",
+    };
+
+    /// <summary>
+    /// Fichier d'état du backend TTS vLLM actif (<c>"qwen3"</c> | <c>"voxtral"</c>). VoxMind l'écrit pour
+    /// demander une bascule ; le watcher du conteneur recharge alors le sidecar avec le bon modèle.
+    /// </summary>
+    public string BackendStateFile { get; set; } = "/app/voice_data/config/tts_backend";
 }
 
 /// <summary>

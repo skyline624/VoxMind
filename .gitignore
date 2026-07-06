@@ -52,6 +52,7 @@ voice_data/shared/
 appsettings.local.json
 appsettings.*.local.json
 voice_data/config/config.local.json
+voice_data/config/tts_backend
 
 # Secrets
 .env

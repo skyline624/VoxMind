@@ -121,20 +121,35 @@ l'entrypoint aligne automatiquement la config VoxMind (`model`, `voice`, `task_t
 | `qwen3` | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | ta voix clonée (`voxmind_clone_xv`) ou 9 presets (`CustomVoice`) | ✅ |
 | `voxtral` | `mistralai/Voxtral-4B-TTS-2603` | 20 presets (`fr_female`, `fr_male`, `neutral_female`…) | ❌ (poids d'encodeur non publiés) |
 
-**Script de bascule** (Windows/PowerShell, recrée le conteneur) :
+Deux façons de basculer :
+
+**1) Backend DURABLE — script PowerShell** (recrée le conteneur ; `-e TTS_BACKEND` = défaut au boot) :
 ```powershell
 .\docker\voxmind\switch-tts.ps1 voxtral                    # → Voxtral, fr_female
 .\docker\voxmind\switch-tts.ps1 voxtral -VoxtralVoice fr_male
 .\docker\voxmind\switch-tts.ps1 qwen3                       # → Qwen3, ta voix clonée
 ```
-Ou en `docker run` direct : `-e TTS_BACKEND=voxtral` (+ `-e VOXTRAL_VOICE=fr_male` au besoin).
 
+**2) Bascule + voix À LA VOLÉE via l'API** (depuis anythingLLM ou tout client OpenAI) :
+```jsonc
+// Le champ "model" pilote le backend ; "voice" choisit la voix (per-requête).
+{ "model": "voxtral", "voice": "fr_male",  "input": "..." }   // → bascule vers Voxtral + voix fr_male
+{ "model": "qwen3",                          "input": "..." }   // → rebascule vers Qwen3 (voix clonée)
+```
+- Changer de **`model`** déclenche un **rechargement du sidecar (~3 min)** : la 1ʳᵉ requête après le changement
+  renvoie **503** (« bascule en cours »), puis les suivantes passent une fois le modèle chargé (debounce anti-rafale).
+- **`voice`** est honoré immédiatement (sans reload) pour le backend actif — presets Voxtral (`fr_male`…) ou
+  speakers Qwen3 `CustomVoice`. En mode **clonage** Qwen3, `voice` est ignoré (voix = référence enregistrée).
+- La bascule API est **temporaire** : au redémarrage du conteneur, on revient au `TTS_BACKEND` durable (option 1).
+
+Notes communes :
 - Licence : Qwen3-TTS = **Apache 2.0** (commercial OK) ; Voxtral-TTS = **CC BY-NC 4.0** (non-commercial).
-- Côté client (anythingLLM, SDK OpenAI…) : rien ne change, on garde `model:"qwen3"` — c'est le backend servi qui
-  change. Voix Voxtral : les 20 presets sont `ar_male, casual_female, casual_male, cheerful_female, de_female,
-  de_male, es_female, es_male, fr_female, fr_male, hi_female, hi_male, it_female, it_male, neutral_female,
-  neutral_male, nl_female, nl_male, pt_female, pt_male`.
-- Au switch, le sidecar recharge le nouveau modèle (~3-5 min ; 1ᵉʳ passage sur Voxtral = download ~8 Go).
+- Voix Voxtral (20 presets) : `ar_male, casual_female, casual_male, cheerful_female, de_female, de_male,
+  es_female, es_male, fr_female, fr_male, hi_female, hi_male, it_female, it_male, neutral_female, neutral_male,
+  nl_female, nl_male, pt_female, pt_male`.
+- Mécanique : VoxMind écrit le backend voulu dans `voice_data/config/tts_backend` ; un watcher
+  (`backend-watch.sh`) recharge alors le sidecar (`serve-tts.sh` relit le fichier). 1ᵉʳ passage sur Voxtral =
+  download ~8 Go.
 
 ## Notes
 

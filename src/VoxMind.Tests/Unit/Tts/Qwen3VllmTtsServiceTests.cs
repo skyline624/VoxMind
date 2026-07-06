@@ -241,6 +241,49 @@ public class Qwen3VllmTtsServiceTests
     }
 
     [Fact]
+    public async Task SynthesizeAsync_RequestVoice_OverridesDefaultVoice()
+    {
+        var cfg = new Qwen3VllmConfig
+        {
+            Enabled = true, BaseUrl = BaseUri.ToString(),
+            Model = "mistralai/Voxtral-4B-TTS-2603", TaskType = "", DefaultVoice = "fr_female",
+        };
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        { Content = new ByteArrayContent(new byte[] { 0x00, 0x40 }) });
+        using var svc = new Qwen3VllmTtsService(cfg, new StubFactory(handler), Logger);
+
+        await svc.SynthesizeAsync("Bonjour", "fr", voice: "fr_male");   // la requête impose la voix
+
+        using var doc = JsonDocument.Parse(handler.CapturedBody!);
+        doc.RootElement.GetProperty("voice").GetString().Should().Be("fr_male");
+    }
+
+    [Fact]
+    public async Task SynthesizeAsync_WrongBackend_RequestsSwitch_AndThrows()
+    {
+        var stateFile = Path.Combine(Path.GetTempPath(), $"tts_backend_{Guid.NewGuid():N}");
+        await File.WriteAllTextAsync(stateFile, "qwen3");
+        try
+        {
+            var mgr = new VllmBackendManager(stateFile, "qwen3", Mock.Of<ILogger<VllmBackendManager>>());
+            var cfg = new Qwen3VllmConfig
+            {
+                Enabled = true, BaseUrl = BaseUri.ToString(),
+                Model = "mistralai/Voxtral-4B-TTS-2603", TaskType = "", DefaultVoice = "fr_female",
+            };
+            var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+            using var svc = new Qwen3VllmTtsService(cfg, new StubFactory(handler), Logger,
+                backendName: "voxtral", manager: mgr);
+
+            // backend actif = qwen3, ce moteur = voxtral → doit demander la bascule et lever (503), sans synthèse.
+            await Assert.ThrowsAsync<NotSupportedException>(() => svc.SynthesizeAsync("Bonjour", "fr"));
+            (await File.ReadAllTextAsync(stateFile)).Trim().Should().Be("voxtral");   // bascule écrite
+            handler.Requests.Should().BeEmpty();                                       // aucune requête HTTP
+        }
+        finally { File.Delete(stateFile); }
+    }
+
+    [Fact]
     public void Constructor_BaseTask_WithoutReference_ReportsNotLoaded()
     {
         var cfg = new Qwen3VllmConfig

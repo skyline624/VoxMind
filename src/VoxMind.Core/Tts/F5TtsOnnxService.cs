@@ -69,6 +69,7 @@ public sealed class F5TtsOnnxService : ITtsService
         byte[]? referenceWav = null,
         string? referenceText = null,
         string? instructions = null,        // ignoré : F5-TTS n'a pas de contrôle d'émotion par instruction
+        string? voice = null,               // ignoré : voix fixée par la référence de la langue
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(text))

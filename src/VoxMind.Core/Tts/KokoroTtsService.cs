@@ -89,6 +89,7 @@ public sealed class KokoroTtsService : ITtsService
         byte[]? referenceWav = null,        // ignoré : Kokoro ne fait pas de voice cloning
         string? referenceText = null,       // ignoré
         string? instructions = null,        // ignoré : Kokoro n'a pas de contrôle d'émotion
+        string? requestedVoice = null,      // ignoré : voix Kokoro fixée par la langue
         CancellationToken ct = default)
     {
         var (lang, voice, cleaned) = PrepareSynthesis(text, language);
@@ -124,6 +125,7 @@ public sealed class KokoroTtsService : ITtsService
         string text,
         string? language = null,
         string? instructions = null,        // ignoré : Kokoro n'a pas de contrôle d'émotion
+        string? requestedVoice = null,      // ignoré : voix Kokoro fixée par la langue
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         var (lang, voice, cleaned) = PrepareSynthesis(text, language);

@@ -39,8 +39,9 @@ COPY --from=dotnet-build /app/publish /app/voxmind
 COPY docker/voxmind/supervisor/voxmind.conf /etc/supervisor/conf.d/voxmind.conf
 COPY docker/voxmind/entrypoint.sh /app/entrypoint.sh
 COPY docker/voxmind/serve-tts.sh /app/serve-tts.sh
+COPY docker/voxmind/backend-watch.sh /app/backend-watch.sh
 COPY docker/voxmind/config.default.json /app/config.default.json
-RUN chmod +x /app/entrypoint.sh /app/serve-tts.sh
+RUN chmod +x /app/entrypoint.sh /app/serve-tts.sh /app/backend-watch.sh
 
 ENV QWEN3_MODEL="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice" \
     VOXMIND_MODELS_DIR="/app/models" \

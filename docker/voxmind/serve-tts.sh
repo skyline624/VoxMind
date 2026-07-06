@@ -5,7 +5,10 @@
 # Un seul modèle à la fois (chaque pipeline réserve ~20 Go sur une 24 Go).
 set -e
 PORT="${VLLM_PORT:-8091}"
-BACKEND="${TTS_BACKEND:-qwen3}"
+# Le backend actif vient du FICHIER D'ÉTAT (écrit par VoxMind pour une bascule à chaud) ; à défaut, l'env.
+STATE_FILE="${VOXMIND_DATA_DIR:-/app/voice_data}/config/tts_backend"
+BACKEND="$(cat "$STATE_FILE" 2>/dev/null | tr -d '[:space:]')"
+[ -z "$BACKEND" ] && BACKEND="${TTS_BACKEND:-qwen3}"
 
 if [ "$BACKEND" = "voxtral" ]; then
     MODEL="${VOXTRAL_MODEL:-mistralai/Voxtral-4B-TTS-2603}"

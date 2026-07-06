@@ -31,12 +31,18 @@ public interface ITtsService : IDisposable
     /// Instructions de style/émotion en langage naturel (ex. « d'un ton enjoué »). Exploité par les moteurs
     /// expressifs (Qwen3-TTS via vLLM) ; ignoré par les moteurs qui ne le supportent pas (Kokoro, F5, …).
     /// </param>
+    /// <param name="voice">
+    /// Nom de voix demandé par la requête (ex. speaker Qwen3, preset Voxtral <c>fr_female</c>). Si null, le
+    /// service utilise sa voix par défaut configurée. Ignoré en mode clonage (voix = référence enregistrée)
+    /// et par les moteurs à voix fixe (Kokoro, F5, …).
+    /// </param>
     Task<TtsResult> SynthesizeAsync(
         string text,
         string? language = null,
         byte[]? referenceWav = null,
         string? referenceText = null,
         string? instructions = null,
+        string? voice = null,
         CancellationToken ct = default);
 
     /// <summary>
@@ -55,9 +61,10 @@ public interface ITtsService : IDisposable
         string text,
         string? language = null,
         string? instructions = null,
+        string? voice = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var result = await SynthesizeAsync(text, language, null, null, instructions, ct).ConfigureAwait(false);
+        var result = await SynthesizeAsync(text, language, null, null, instructions, voice, ct).ConfigureAwait(false);
         if (result.Pcm.Length > 0)
         {
             yield return result;

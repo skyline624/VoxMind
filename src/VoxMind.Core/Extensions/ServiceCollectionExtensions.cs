@@ -114,20 +114,39 @@ public static class ServiceCollectionExtensions
             // Qwen3-TTS via sidecar vLLM-omni (HTTP, GPU) : tier expressif TEMPS RÉEL (RTF ~0,5 sur RTX 3090).
             // VoxMind est client HTTP du serveur OpenAI-compatible (/v1/audio/speech). Se dégrade en 503 si le
             // sidecar est injoignable (fenêtre de démarrage ~3-5 min), sans gêner Kokoro.
-            if (config.Ml.Tts.Qwen3Vllm.Enabled)
+            // Un même sidecar vLLM-omni sert SOIT Qwen3-TTS SOIT Voxtral-TTS (un modèle à la fois, GPU).
+            // Les deux backends partagent le client HTTP (même :8091) et un manager d'état ; l'appelant
+            // sélectionne par model="qwen3"/"voxtral" (changer de backend déclenche un reload ~3 min).
+            var vllmEnabled = config.Ml.Tts.Qwen3Vllm.Enabled || config.Ml.Tts.VoxtralVllm.Enabled;
+            if (vllmEnabled)
             {
                 services.AddHttpClient(Qwen3VllmTtsService.HttpClientName, c =>
                 {
                     c.BaseAddress = new Uri(config.Ml.Tts.Qwen3Vllm.BaseUrl);
                     c.Timeout = TimeSpan.FromSeconds(config.Ml.Tts.Qwen3Vllm.TimeoutSeconds);
                 });
-                services.AddSingleton<Qwen3VllmTtsService>(sp =>
-                    new Qwen3VllmTtsService(
-                        config.Ml.Tts.Qwen3Vllm,
-                        sp.GetRequiredService<IHttpClientFactory>(),
-                        sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Qwen3VllmTtsService>>()
-                    )
-                );
+                services.AddSingleton<VllmBackendManager>(sp =>
+                    new VllmBackendManager(
+                        config.Ml.Tts.BackendStateFile,
+                        defaultBackend: "qwen3",
+                        sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<VllmBackendManager>>()));
+
+                if (config.Ml.Tts.Qwen3Vllm.Enabled)
+                    services.AddKeyedSingleton<Qwen3VllmTtsService>("qwen3", (sp, _) =>
+                        new Qwen3VllmTtsService(
+                            config.Ml.Tts.Qwen3Vllm,
+                            sp.GetRequiredService<IHttpClientFactory>(),
+                            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Qwen3VllmTtsService>>(),
+                            backendName: "qwen3",
+                            manager: sp.GetRequiredService<VllmBackendManager>()));
+                if (config.Ml.Tts.VoxtralVllm.Enabled)
+                    services.AddKeyedSingleton<Qwen3VllmTtsService>("voxtral", (sp, _) =>
+                        new Qwen3VllmTtsService(
+                            config.Ml.Tts.VoxtralVllm,
+                            sp.GetRequiredService<IHttpClientFactory>(),
+                            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Qwen3VllmTtsService>>(),
+                            backendName: "voxtral",
+                            manager: sp.GetRequiredService<VllmBackendManager>()));
             }
 
             // Registry multi-engine. Ajouter une entrée ici pour brancher Zipvoice / Piper / etc.
@@ -140,7 +159,9 @@ public static class ServiceCollectionExtensions
                     ["xtts"] = sp.GetRequiredService<CoquiXttsTtsService>(),
                 };
                 if (config.Ml.Tts.Qwen3Vllm.Enabled)
-                    engines["qwen3"] = sp.GetRequiredService<Qwen3VllmTtsService>();
+                    engines["qwen3"] = sp.GetRequiredKeyedService<Qwen3VllmTtsService>("qwen3");
+                if (config.Ml.Tts.VoxtralVllm.Enabled)
+                    engines["voxtral"] = sp.GetRequiredKeyedService<Qwen3VllmTtsService>("voxtral");
 
                 // Moteur par défaut = config (mis à "qwen3" dans la config conteneur). L'appelant force via model=.
                 return new TtsEngineRegistry(engines, config.Ml.Tts.DefaultEngine);
