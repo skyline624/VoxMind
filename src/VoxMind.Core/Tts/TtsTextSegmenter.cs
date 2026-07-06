@@ -95,6 +95,13 @@ public static class TtsTextSegmenter
         text = Regex.Replace(text, @"\*([^*\n]+)\*", "$1");
         text = Regex.Replace(text, @"(?<![A-Za-z0-9])_([^_\n]+)_(?![A-Za-z0-9])", "$1");
 
+        // Tableaux markdown : sans traitement, le TTS prononce les « | » et « --- » → charabia. On retire les
+        // lignes de séparation (|---|:--:|), on enlève les « | » de début/fin de ligne, et on remplace les « | »
+        // internes par des virgules → les cellules sont lues comme une liste (« Backend, qwen3, clonage »).
+        text = Regex.Replace(text, @"(?m)^[ \t]*\|?[ \t]*:?-{2,}:?[ \t]*(\|[ \t]*:?-{2,}:?[ \t]*)*\|?[ \t]*$", "");
+        text = Regex.Replace(text, @"(?m)^[ \t]*\|(.+)\|[ \t]*$", "$1");
+        text = Regex.Replace(text, @"[ \t]*\|[ \t]*", ", ");
+
         // Retours à la ligne → frontières de phrase.
         var sb = new StringBuilder();
         foreach (var raw in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))

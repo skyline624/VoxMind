@@ -24,6 +24,20 @@ public class TtsTextSegmenterTests
     }
 
     [Fact]
+    public void CleanText_MarkdownTable_ReadsCellsAsList_NoPipesOrDashes()
+    {
+        var input = "Voici :\n| Backend | Voix | Clonage |\n|---|---|---|\n| qwen3 | clonée | oui |\nFin.";
+
+        var output = TtsTextSegmenter.CleanText(input);
+
+        // Les cellules sont lues comme une liste ; plus aucun « | » ni « --- » (séparateur retiré).
+        output.Should().NotContain("|").And.NotContain("---");
+        output.Should().Contain("Backend, Voix, Clonage");
+        output.Should().Contain("qwen3, clonée, oui");
+        output.Should().Contain("Fin.");
+    }
+
+    [Fact]
     public void SplitSentences_SplitsOnSentenceEnders()
     {
         var parts = TtsTextSegmenter.SplitSentences("Un. Deux! Trois?").ToList();
