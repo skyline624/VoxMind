@@ -174,8 +174,10 @@ public sealed class Qwen3VllmTtsService : ITtsService
             payload["voice"] = _config.ReferenceVoiceName;
         else
         {
-            payload["task_type"] = _config.TaskType;                   // CustomVoice / VoiceDesign
-            payload["voice"] = voice;                                  // speaker prédéfini
+            // task_type : Qwen3 (CustomVoice/VoiceDesign) l'exige ; Voxtral ne l'utilise pas → on l'omet si vide.
+            if (!string.IsNullOrWhiteSpace(_config.TaskType))
+                payload["task_type"] = _config.TaskType;
+            payload["voice"] = voice;                                  // preset (Qwen3 speaker ou Voxtral « fr_female »…)
         }
 
         return JsonContent.Create(payload, options: JsonOpts);

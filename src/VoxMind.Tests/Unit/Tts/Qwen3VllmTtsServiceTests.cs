@@ -212,6 +212,35 @@ public class Qwen3VllmTtsServiceTests
     }
 
     [Fact]
+    public async Task SynthesizeAsync_VoxtralBackend_EmptyTaskType_OmitsTaskType_SendsPresetVoice()
+    {
+        // Voxtral : model dédié, pas de task_type, voix = preset (fr_female).
+        var cfg = new Qwen3VllmConfig
+        {
+            Enabled = true,
+            BaseUrl = BaseUri.ToString(),
+            Model = "mistralai/Voxtral-4B-TTS-2603",
+            TaskType = "",
+            DefaultVoice = "fr_female",
+        };
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(new byte[] { 0x00, 0x40 }),
+        });
+        using var svc = new Qwen3VllmTtsService(cfg, new StubFactory(handler), Logger);
+
+        await svc.SynthesizeAsync("Bonjour", "fr");
+
+        using var doc = JsonDocument.Parse(handler.CapturedBody!);
+        var root = doc.RootElement;
+        root.GetProperty("model").GetString().Should().Be("mistralai/Voxtral-4B-TTS-2603");
+        root.GetProperty("voice").GetString().Should().Be("fr_female");
+        root.GetProperty("language").GetString().Should().Be("French");
+        root.TryGetProperty("task_type", out _).Should().BeFalse();   // omis car vide
+        root.TryGetProperty("ref_audio", out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void Constructor_BaseTask_WithoutReference_ReportsNotLoaded()
     {
         var cfg = new Qwen3VllmConfig

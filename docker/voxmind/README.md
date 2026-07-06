@@ -2,7 +2,7 @@
 
 Une **seule image** embarquant tous les services :
 - **VoxMind.Api** (.NET) sur `:8000` — transcription (Parakeet), reconnaissance de locuteur, TTS Kokoro (ONNX CPU, in-process).
-- **Sidecar Qwen3-TTS** servi par **vLLM-omni** (GPU) sur `127.0.0.1:8091` — tier TTS expressif **temps réel** (RTF ~0,5 sur RTX 3090), appelé en HTTP par VoxMind (moteur `qwen3`).
+- **Sidecar TTS** servi par **vLLM-omni** (GPU) sur `127.0.0.1:8091` — tier expressif **temps réel** (RTF ~0,5 sur RTX 3090), appelé en HTTP par VoxMind (moteur `qwen3`). Modèle **basculable** entre **Qwen3-TTS** (clonage) et **Voxtral-TTS** (Mistral, presets) via `TTS_BACKEND` — voir la section dédiée.
 
 Les deux process sont gérés par `supervisord` dans le conteneur.
 
@@ -108,6 +108,33 @@ si le sidecar redémarre (les voix sont gardées en mémoire). RTF mesuré **~0,
 > ⚠️ On n'envoie **pas** `ref_audio` inline en ICL : le moteur vLLM-omni crashe alors (« ref_audio artifact
 > cache entry is missing ref_code »). Le passage par l'upload de voix est ce qui calcule ce `ref_code`.
 > Si `task_type=Base` sans `reference_audio_path` valide, `qwen3` se déclare **non chargé** (→ 503), pas 400.
+
+## Basculer entre Qwen3-TTS et Voxtral-TTS
+
+Le sidecar peut servir **Qwen3-TTS** (Alibaba, clonage de voix) ou **Voxtral-TTS** (Mistral, 20 voix presets)
+— tous deux via vLLM-omni, même endpoint `/v1/audio/speech`. **Un seul modèle à la fois** (chaque pipeline
+réserve ~20-22 Go sur une 24 Go). Le choix se fait par la variable **`TTS_BACKEND`** (`qwen3` | `voxtral`) ;
+l'entrypoint aligne automatiquement la config VoxMind (`model`, `voice`, `task_type`) sur le backend.
+
+| Backend | Modèle | Voix | Clonage |
+|---|---|---|---|
+| `qwen3` | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | ta voix clonée (`voxmind_clone_xv`) ou 9 presets (`CustomVoice`) | ✅ |
+| `voxtral` | `mistralai/Voxtral-4B-TTS-2603` | 20 presets (`fr_female`, `fr_male`, `neutral_female`…) | ❌ (poids d'encodeur non publiés) |
+
+**Script de bascule** (Windows/PowerShell, recrée le conteneur) :
+```powershell
+.\docker\voxmind\switch-tts.ps1 voxtral                    # → Voxtral, fr_female
+.\docker\voxmind\switch-tts.ps1 voxtral -VoxtralVoice fr_male
+.\docker\voxmind\switch-tts.ps1 qwen3                       # → Qwen3, ta voix clonée
+```
+Ou en `docker run` direct : `-e TTS_BACKEND=voxtral` (+ `-e VOXTRAL_VOICE=fr_male` au besoin).
+
+- Licence : Qwen3-TTS = **Apache 2.0** (commercial OK) ; Voxtral-TTS = **CC BY-NC 4.0** (non-commercial).
+- Côté client (anythingLLM, SDK OpenAI…) : rien ne change, on garde `model:"qwen3"` — c'est le backend servi qui
+  change. Voix Voxtral : les 20 presets sont `ar_male, casual_female, casual_male, cheerful_female, de_female,
+  de_male, es_female, es_male, fr_female, fr_male, hi_female, hi_male, it_female, it_male, neutral_female,
+  neutral_male, nl_female, nl_male, pt_female, pt_male`.
+- Au switch, le sidecar recharge le nouveau modèle (~3-5 min ; 1ᵉʳ passage sur Voxtral = download ~8 Go).
 
 ## Notes
 
