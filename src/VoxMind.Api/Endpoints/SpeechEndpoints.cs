@@ -114,15 +114,27 @@ public static class SpeechEndpoints
             {
                 if (hasFirst)
                 {
-                    if (!rawPcm)
-                        WavWriter.WriteStreamingHeader(output, enumerator.Current.SampleRate, channels: 1);
-
-                    WavWriter.WritePcm16(output, enumerator.Current.Pcm);
-                    await output.FlushAsync(ct).ConfigureAwait(false);
-
-                    while (await enumerator.MoveNextAsync().ConfigureAwait(false))
+                    if (rawPcm)
                     {
+                        // PCM brut : streaming au fil de l'eau (le client lit/wrappe progressivement).
                         WavWriter.WritePcm16(output, enumerator.Current.Pcm);
+                        await output.FlushAsync(ct).ConfigureAwait(false);
+                        while (await enumerator.MoveNextAsync().ConfigureAwait(false))
+                        {
+                            WavWriter.WritePcm16(output, enumerator.Current.Pcm);
+                            await output.FlushAsync(ct).ConfigureAwait(false);
+                        }
+                    }
+                    else
+                    {
+                        // WAV : on bufferise tous les segments puis on écrit un WAV aux tailles CORRECTES (pas de
+                        // sentinelle 0xFFFFFFFF) → jouable par les lecteurs stricts (anythingLLM, <audio>, ffmpeg
+                        // sans warning). Perd le streaming pour le WAV, mais ces clients bufferisent de toute façon.
+                        var sampleRate = enumerator.Current.SampleRate;
+                        var all = new List<float>(enumerator.Current.Pcm);
+                        while (await enumerator.MoveNextAsync().ConfigureAwait(false))
+                            all.AddRange(enumerator.Current.Pcm);
+                        WavWriter.Write(output, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(all), sampleRate, channels: 1);
                         await output.FlushAsync(ct).ConfigureAwait(false);
                     }
                 }
