@@ -24,8 +24,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && (apt-get install -y --no-install-recommends libicu74 || apt-get install -y --no-install-recommends libicu70) \
     && rm -rf /var/lib/apt/lists/*
 
-# vllm-omni (wheel pur-Python ; fournit aussi vllm_omni/deploy/qwen3_tts.yaml utilisé par `serve`).
-RUN git clone --depth 1 https://github.com/vllm-project/vllm-omni.git /app/vllm-omni \
+# vllm-omni (fournit aussi vllm_omni/deploy/*.yaml utilisés par `serve`). PINNÉ au commit compatible avec la
+# base vllm 0.23.0 : le HEAD récent importe `OpenAIServingTokenization` (renommé) → ImportError sur 0.23.0.
+ARG VLLM_OMNI_COMMIT=724f5d132
+RUN git clone https://github.com/vllm-project/vllm-omni.git /app/vllm-omni \
+    && git -C /app/vllm-omni checkout "${VLLM_OMNI_COMMIT}" \
     && pip install --no-cache-dir /app/vllm-omni soundfile
 
 # Runtime ASP.NET .NET 10 copié depuis l'image officielle (pas de SDK dans l'image finale).
@@ -52,7 +55,8 @@ ENV QWEN3_MODEL="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice" \
     TTS_BACKEND="qwen3" \
     QWEN3_TASK_TYPE="CustomVoice" \
     VOXTRAL_MODEL="mistralai/Voxtral-4B-TTS-2603" \
-    VOXTRAL_VOICE="fr_female"
+    VOXTRAL_VOICE="fr_female" \
+    VOXTRAL_STAGE_GPU_UTIL=0.6
 
 EXPOSE 8000
 VOLUME ["/app/models", "/app/voice_data", "/root/.cache/huggingface"]

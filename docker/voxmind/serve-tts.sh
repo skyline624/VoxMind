@@ -12,9 +12,11 @@ BACKEND="$(cat "$STATE_FILE" 2>/dev/null | tr -d '[:space:]')"
 
 if [ "$BACKEND" = "voxtral" ]; then
     MODEL="${VOXTRAL_MODEL:-mistralai/Voxtral-4B-TTS-2603}"
-    echo "[serve-tts] backend=voxtral → ${MODEL}"
+    DEPLOY="/app/voxtral_tts.runtime.yaml"                       # deploy-config ajusté (VRAM réduite)
+    [ -f "$DEPLOY" ] || DEPLOY="/app/vllm-omni/vllm_omni/deploy/voxtral_tts.yaml"
+    echo "[serve-tts] backend=voxtral → ${MODEL} (deploy ${DEPLOY})"
     exec vllm-omni serve "${MODEL}" \
-        --deploy-config /app/vllm-omni/vllm_omni/deploy/voxtral_tts.yaml \
+        --deploy-config "${DEPLOY}" \
         --host 127.0.0.1 --port "${PORT}" --omni
 else
     echo "[serve-tts] backend=qwen3 → ${QWEN3_MODEL}"

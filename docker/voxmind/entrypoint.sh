@@ -55,6 +55,16 @@ DEPLOY_RUNTIME=/app/qwen3_tts.runtime.yaml
 STAGE_UTIL="${QWEN3_STAGE_GPU_UTIL:-0.2}"
 sed "s/gpu_memory_utilization:[[:space:]]*[0-9.]\+/gpu_memory_utilization: ${STAGE_UTIL}/g" "$DEPLOY_SRC" > "$DEPLOY_RUNTIME"
 
+# Deploy-config Voxtral ajusté : le stage0 réserve 0.8 du GPU (~19 Go, surtout du pool KV spéculatif inutile
+# en single-stream). On abaisse ce 0.8 → ~0.45 (≈ 11-13 Go) via VOXTRAL_STAGE_GPU_UTIL ; stage1 (0.1) inchangé.
+VOX_SRC=/app/vllm-omni/vllm_omni/deploy/voxtral_tts.yaml
+VOX_RUNTIME=/app/voxtral_tts.runtime.yaml
+if [ -f "$VOX_SRC" ]; then
+    VOX_UTIL="${VOXTRAL_STAGE_GPU_UTIL:-0.45}"
+    sed "s/gpu_memory_utilization:[[:space:]]*0\.8/gpu_memory_utilization: ${VOX_UTIL}/" "$VOX_SRC" > "$VOX_RUNTIME"
+    echo "[entrypoint] voxtral : gpu_memory_utilization stage0 → ${VOX_UTIL} (VOXTRAL_STAGE_GPU_UTIL)"
+fi
+
 echo "[entrypoint] data=${DATA_DIR}  vLLM=127.0.0.1:${VLLM_PORT:-8091}"
 echo "[entrypoint] note : au 1er démarrage/switch, le sidecar charge le modèle (~3-5 min) ; /v1/audio/speech"
 echo "[entrypoint]        model=qwen3 répond 503 pendant ce temps, Kokoro reste dispo."
