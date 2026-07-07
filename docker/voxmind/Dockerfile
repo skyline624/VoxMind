@@ -56,7 +56,7 @@ ENV QWEN3_MODEL="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice" \
     QWEN3_TASK_TYPE="CustomVoice" \
     VOXTRAL_MODEL="mistralai/Voxtral-4B-TTS-2603" \
     VOXTRAL_VOICE="fr_female" \
-    VOXTRAL_STAGE_GPU_UTIL=0.6
+    VOXTRAL_STAGE_GPU_UTIL=0.5
 
 EXPOSE 8000
 VOLUME ["/app/models", "/app/voice_data", "/root/.cache/huggingface"]
